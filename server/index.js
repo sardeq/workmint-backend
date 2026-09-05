@@ -10,6 +10,9 @@ import orderRoutes from "./routes/orders.js";
 import milestoneRoutes from "./routes/milestones.js";
 import messageRoutes from "./routes/messages.js";
 import disputeRoutes from "./routes/disputes.js";
+import portfolioRoutes from "./routes/portfolio.js";
+import withdrawalRoutes from "./routes/withdrawals.js";
+import paymentMethodRoutes from "./routes/paymentMethods.js";
 
 const app = express();
 dotenv.config();
@@ -31,6 +34,9 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/milestones", milestoneRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/disputes", disputeRoutes);
+app.use("/api/portfolio", portfolioRoutes);
+app.use("/api/withdrawals", withdrawalRoutes);
+app.use("/api/payment-methods", paymentMethodRoutes);
 
 app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });
