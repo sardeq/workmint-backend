@@ -3,7 +3,6 @@
 DROP TABLE IF EXISTS disputes, change_requests, activity, messages,
   milestones, orders, proposal_milestones, proposals, jobs, payment_methods,
   withdrawals, portfolio_items, users CASCADE;
-DROP VIEW IF EXISTS order_totals CASCADE;
 
 -- ---------------------------------------------------------------- accounts
 CREATE TABLE users (
@@ -198,16 +197,3 @@ CREATE TABLE payment_methods (
   kind       TEXT    NOT NULL CHECK (kind IN ('Card', 'Bank', 'PayPal')),
   is_primary BOOLEAN NOT NULL DEFAULT FALSE
 );
-
--- ------------------------------------------------------------------- views
--- Escrow maths in one place, so the API and any report agree.
-CREATE VIEW order_totals AS
-SELECT
-  o.id AS order_id,
-  COALESCE(SUM(m.amount), 0)                                                   AS total,
-  COALESCE(SUM(m.amount) FILTER (WHERE m.status = 'approved'), 0)              AS released,
-  COALESCE(SUM(m.amount) FILTER (WHERE m.status = 'refunded'), 0)              AS refunded,
-  COALESCE(SUM(m.amount) FILTER (WHERE m.status NOT IN ('approved','refunded')), 0) AS escrow
-FROM orders o
-LEFT JOIN milestones m ON m.order_id = o.id
-GROUP BY o.id;

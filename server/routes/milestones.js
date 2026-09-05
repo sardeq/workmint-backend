@@ -1,5 +1,6 @@
 import express from "express";
 import pgclient from "../db/db.js";
+import { nextPosition } from "../helpers.js";
 
 const milestoneRoutes = express.Router();
 
@@ -52,13 +53,13 @@ milestoneRoutes.post("/", async (req, res) => {
     }
 
     try {
+        const position = await nextPosition(pgclient, order_id);
+
         const result = await pgclient.query(
             `INSERT INTO milestones (order_id, position, title, amount, due_date)
-             VALUES ($1,
-                     (SELECT COALESCE(MAX(position), 0) + 1 FROM milestones WHERE order_id = $1),
-                     $2, $3, $4)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
-            [order_id, title, amount, due_date]
+            [order_id, position, title, amount, due_date]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {

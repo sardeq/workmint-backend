@@ -8,17 +8,31 @@ const jobRoutes = express.Router();
 jobRoutes.get("/", async (req, res) => {
     const { client_id, status } = req.query;
     try {
-        const result = await pgclient.query(
-            `SELECT j.*, u.company AS client, u.rating AS client_rating,
-                    (SELECT COUNT(*) FROM proposals p WHERE p.job_id = j.id) AS proposal_count
-             FROM jobs j
-             JOIN users u ON u.id = j.client_id
-             WHERE ($1::int IS NULL OR j.client_id = $1)
-               AND ($2::text IS NULL OR j.status = $2)
-             ORDER BY j.created_at DESC`,
-            [client_id || null, status || "open"]
-        );
-        res.json(result.rows);
+        let sql = `SELECT j.*, u.company AS client, u.rating AS client_rating
+                   FROM jobs j
+                   JOIN users u ON u.id = j.client_id
+                   WHERE j.status = $1`;
+        const values = [status || "open"];
+
+        if (client_id) {
+            values.push(client_id);
+            sql = sql + ` AND j.client_id = $${values.length}`;
+        }
+        sql = sql + " ORDER BY j.created_at DESC";
+
+        const result = await pgclient.query(sql, values);
+        const jobs = result.rows;
+
+        // How many proposals each job has, counted one job at a time.
+        for (let i = 0; i < jobs.length; i++) {
+            const count = await pgclient.query(
+                "SELECT COUNT(*) AS proposal_count FROM proposals WHERE job_id = $1",
+                [jobs[i].id]
+            );
+            jobs[i].proposal_count = count.rows[0].proposal_count;
+        }
+
+        res.json(jobs);
     } catch (err) {
         res.status(500).json({ error: "Internal server error" });
     }

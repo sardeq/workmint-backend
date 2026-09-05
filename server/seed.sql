@@ -143,6 +143,7 @@ INSERT INTO change_requests (order_id, reason, extra_cost, extra_days, status, c
 INSERT INTO withdrawals (freelancer_id, amount, method, status, at) VALUES
   (2, 720, 'Bank transfer', 'Paid', NOW() - INTERVAL '20 days');
 
--- Sanity check: every order's money should add up.
-SELECT o.id, o.project, t.total, t.released, t.escrow, t.refunded
-FROM orders o JOIN order_totals t ON t.order_id = o.id ORDER BY o.id;
+-- Sanity check: the seed should leave 7 users, 2 orders and 6 milestones.
+SELECT COUNT(*) AS users FROM users;
+SELECT COUNT(*) AS orders FROM orders;
+SELECT COUNT(*) AS milestones FROM milestones;

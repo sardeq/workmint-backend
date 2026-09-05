@@ -1,28 +1,33 @@
 import express from "express";
 import pgclient from "../db/db.js";
+import { addDays, nextPosition } from "../helpers.js";
 
 const orderRoutes = express.Router();
 
 // GET http://localhost:5000/api/orders?client_id=1
 // GET http://localhost:5000/api/orders?freelancer_id=2
-// order_totals is a view in schema.sql that does the escrow maths, so the
-// released / escrow numbers are computed in one place instead of in JS.
 orderRoutes.get("/", async (req, res) => {
     const { client_id, freelancer_id } = req.query;
     try {
-        const result = await pgclient.query(
-            `SELECT o.*, c.company AS client, c.name AS client_contact,
-                    f.name AS freelancer_name, f.title AS freelancer_title, f.rating,
-                    t.total, t.released, t.escrow, t.refunded
-             FROM orders o
-             JOIN users c ON c.id = o.client_id
-             JOIN users f ON f.id = o.freelancer_id
-             JOIN order_totals t ON t.order_id = o.id
-             WHERE ($1::int IS NULL OR o.client_id = $1)
-               AND ($2::int IS NULL OR o.freelancer_id = $2)
-             ORDER BY o.deadline`,
-            [client_id || null, freelancer_id || null]
-        );
+        let sql = `SELECT o.*, c.company AS client, c.name AS client_contact,
+                          f.name AS freelancer_name, f.title AS freelancer_title, f.rating
+                   FROM orders o
+                   JOIN users c ON c.id = o.client_id
+                   JOIN users f ON f.id = o.freelancer_id
+                   WHERE 1 = 1`;
+        const values = [];
+
+        if (client_id) {
+            values.push(client_id);
+            sql = sql + ` AND o.client_id = $${values.length}`;
+        }
+        if (freelancer_id) {
+            values.push(freelancer_id);
+            sql = sql + ` AND o.freelancer_id = $${values.length}`;
+        }
+        sql = sql + " ORDER BY o.deadline";
+
+        const result = await pgclient.query(sql, values);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: "Internal server error" });
@@ -37,12 +42,10 @@ orderRoutes.get("/:id", async (req, res) => {
     try {
         const order = await pgclient.query(
             `SELECT o.*, c.company AS client, c.name AS client_contact,
-                    f.name AS freelancer_name, f.title AS freelancer_title, f.rating,
-                    t.total, t.released, t.escrow, t.refunded
+                    f.name AS freelancer_name, f.title AS freelancer_title, f.rating
              FROM orders o
              JOIN users c ON c.id = o.client_id
              JOIN users f ON f.id = o.freelancer_id
-             JOIN order_totals t ON t.order_id = o.id
              WHERE o.id = $1`,
             [id]
         );
@@ -174,13 +177,13 @@ orderRoutes.put("/:orderId/change-requests/:id", async (req, res) => {
 
         const request = result.rows[0];
         if (status === "Approved" && request.extra_cost > 0) {
+            const position = await nextPosition(pgclient, req.params.orderId);
+            const extraDays = request.extra_days > 0 ? request.extra_days : 1;
+
             await pgclient.query(
                 `INSERT INTO milestones (order_id, position, title, amount, due_date, status)
-                 VALUES ($1,
-                         (SELECT COALESCE(MAX(position), 0) + 1 FROM milestones WHERE order_id = $1),
-                         'Scope change: additional work', $2,
-                         CURRENT_DATE + (GREATEST($3, 1) || ' days')::INTERVAL, 'pending')`,
-                [req.params.orderId, request.extra_cost, request.extra_days]
+                 VALUES ($1, $2, 'Scope change: additional work', $3, $4, 'pending')`,
+                [req.params.orderId, position, request.extra_cost, addDays(extraDays)]
             );
         }
 

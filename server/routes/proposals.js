@@ -1,5 +1,6 @@
 import express from "express";
 import pgclient from "../db/db.js";
+import { addDays } from "../helpers.js";
 
 const proposalRoutes = express.Router();
 
@@ -9,20 +10,31 @@ const proposalRoutes = express.Router();
 proposalRoutes.get("/", async (req, res) => {
     const { freelancer_id, client_id, job_id } = req.query;
     try {
-        const result = await pgclient.query(
-            `SELECT p.*, j.title AS job_title, j.budget AS job_budget,
-                    c.company AS client, f.name AS freelancer_name,
-                    f.title AS freelancer_title, f.rating, f.skills
-             FROM proposals p
-             JOIN jobs  j ON j.id = p.job_id
-             JOIN users c ON c.id = j.client_id
-             JOIN users f ON f.id = p.freelancer_id
-             WHERE ($1::int IS NULL OR p.freelancer_id = $1)
-               AND ($2::int IS NULL OR j.client_id = $2)
-               AND ($3::int IS NULL OR p.job_id = $3)
-             ORDER BY p.sent_at DESC`,
-            [freelancer_id || null, client_id || null, job_id || null]
-        );
+        let sql = `SELECT p.*, j.title AS job_title, j.budget AS job_budget,
+                          c.company AS client, f.name AS freelancer_name,
+                          f.title AS freelancer_title, f.rating, f.skills
+                   FROM proposals p
+                   JOIN jobs  j ON j.id = p.job_id
+                   JOIN users c ON c.id = j.client_id
+                   JOIN users f ON f.id = p.freelancer_id
+                   WHERE 1 = 1`;
+        const values = [];
+
+        if (freelancer_id) {
+            values.push(freelancer_id);
+            sql = sql + ` AND p.freelancer_id = $${values.length}`;
+        }
+        if (client_id) {
+            values.push(client_id);
+            sql = sql + ` AND j.client_id = $${values.length}`;
+        }
+        if (job_id) {
+            values.push(job_id);
+            sql = sql + ` AND p.job_id = $${values.length}`;
+        }
+        sql = sql + " ORDER BY p.sent_at DESC";
+
+        const result = await pgclient.query(sql, values);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: "Internal server error" });
@@ -111,10 +123,10 @@ proposalRoutes.post("/:id/accept", async (req, res) => {
 
         const order = await pgclient.query(
             `INSERT INTO orders (job_id, client_id, freelancer_id, project, brief, deadline)
-             VALUES ($1, $2, $3, $4, $5, CURRENT_DATE + ($6 || ' days')::INTERVAL)
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
             [proposal.job_id, proposal.client_id, proposal.freelancer_id,
-             proposal.title, proposal.description, proposal.days]
+             proposal.title, proposal.description, addDays(proposal.days)]
         );
         const orderId = order.rows[0].id;
 
@@ -127,13 +139,16 @@ proposalRoutes.post("/:id/accept", async (req, res) => {
             ? plan.rows
             : [{ title: "Full delivery", amount: proposal.amount }];
 
+        // Spread the due dates evenly across the days the freelancer asked for.
         for (let i = 0; i < milestones.length; i++) {
             const dueInDays = Math.round((proposal.days * (i + 1)) / milestones.length);
+            const status = i === 0 ? "active" : "pending";
+
             await pgclient.query(
                 `INSERT INTO milestones (order_id, position, title, amount, due_date, status)
-                 VALUES ($1, $2, $3, $4, CURRENT_DATE + ($5 || ' days')::INTERVAL, $6)`,
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
                 [orderId, i + 1, milestones[i].title, milestones[i].amount,
-                 dueInDays, i === 0 ? "active" : "pending"]
+                 addDays(dueInDays), status]
             );
         }
 
