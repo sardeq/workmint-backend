@@ -1,5 +1,6 @@
 import express from "express";
 import pgclient from "../db/db.js";
+import { nextPosition } from "../helpers.js";
 
 const disputeRoutes = express.Router();
 
@@ -8,18 +9,23 @@ const disputeRoutes = express.Router();
 disputeRoutes.get("/", async (req, res) => {
     const { status } = req.query;
     try {
-        const result = await pgclient.query(
-            `SELECT d.*, o.project, c.company AS client, f.name AS freelancer,
-                    m.title AS milestone_title, m.deliverable_link
-             FROM disputes d
-             JOIN orders o     ON o.id = d.order_id
-             JOIN users c      ON c.id = o.client_id
-             JOIN users f      ON f.id = o.freelancer_id
-             JOIN milestones m ON m.id = d.milestone_id
-             WHERE ($1::text IS NULL OR d.status = $1)
-             ORDER BY d.opened_at`,
-            [status || null]
-        );
+        let sql = `SELECT d.*, o.project, c.company AS client, f.name AS freelancer,
+                          m.title AS milestone_title, m.deliverable_link
+                   FROM disputes d
+                   JOIN orders o     ON o.id = d.order_id
+                   JOIN users c      ON c.id = o.client_id
+                   JOIN users f      ON f.id = o.freelancer_id
+                   JOIN milestones m ON m.id = d.milestone_id
+                   WHERE 1 = 1`;
+        const values = [];
+
+        if (status) {
+            values.push(status);
+            sql = sql + ` AND d.status = $${values.length}`;
+        }
+        sql = sql + " ORDER BY d.opened_at";
+
+        const result = await pgclient.query(sql, values);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: "Internal server error" });
@@ -124,12 +130,12 @@ disputeRoutes.put("/:id/resolve", async (req, res) => {
                 [half, dispute.milestone_id]
             );
             const m = updated.rows[0];
+            const position = await nextPosition(pgclient, m.order_id);
+
             await pgclient.query(
                 `INSERT INTO milestones (order_id, position, title, amount, due_date, status, refunded_on)
-                 VALUES ($1,
-                         (SELECT COALESCE(MAX(position), 0) + 1 FROM milestones WHERE order_id = $1),
-                         $2, $3, $4, 'refunded', NOW())`,
-                [m.order_id, m.title + " (refunded half)", half, m.due_date]
+                 VALUES ($1, $2, $3, $4, $5, 'refunded', NOW())`,
+                [m.order_id, position, m.title + " (refunded half)", half, m.due_date]
             );
         }
 

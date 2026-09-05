@@ -4,8 +4,6 @@ import pgclient from "../db/db.js";
 
 const userRoutes = express.Router();
 
-// We never send password_hash back to the client, so every SELECT lists the
-// columns it wants instead of using SELECT *.
 const USER_COLUMNS = `id, name, email, role, status, company, title, bio,
                       skills, hourly_rate, available, location, rating, joined_at`;
 
@@ -14,13 +12,21 @@ const USER_COLUMNS = `id, name, email, role, status, company, title, bio,
 userRoutes.get("/", async (req, res) => {
     const { role, status } = req.query;
     try {
-        const result = await pgclient.query(
-            `SELECT ${USER_COLUMNS} FROM users
-             WHERE ($1::text IS NULL OR role = $1)
-               AND ($2::text IS NULL OR status = $2)
-             ORDER BY id`,
-            [role || null, status || null]
-        );
+        // Build the WHERE clause from whichever filters were sent.
+        let sql = `SELECT ${USER_COLUMNS} FROM users WHERE 1 = 1`;
+        const values = [];
+
+        if (role) {
+            values.push(role);
+            sql = sql + ` AND role = $${values.length}`;
+        }
+        if (status) {
+            values.push(status);
+            sql = sql + ` AND status = $${values.length}`;
+        }
+        sql = sql + " ORDER BY id";
+
+        const result = await pgclient.query(sql, values);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: "Internal server error" });
@@ -44,7 +50,6 @@ userRoutes.get("/:id", async (req, res) => {
 });
 
 // POST http://localhost:5000/api/users     (register)
-// { "name": "Amina", "email": "a@b.com", "password": "demo1234", "role": "freelancer" }
 userRoutes.post("/", async (req, res) => {
     const { name, email, password, role, company, title } = req.body;
 
@@ -56,7 +61,6 @@ userRoutes.post("/", async (req, res) => {
     }
 
     try {
-        // Freelancers start as pending so an admin has to approve them first.
         const status = role === "freelancer" ? "pending" : "active";
         const hash = await bcrypt.hash(password, 10);
 
@@ -77,7 +81,6 @@ userRoutes.post("/", async (req, res) => {
 });
 
 // POST http://localhost:5000/api/users/login
-// { "email": "rana@techcorp.com", "password": "demo1234" }
 userRoutes.post("/login", async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -125,8 +128,7 @@ userRoutes.put("/:id", async (req, res) => {
     }
 });
 
-// PUT http://localhost:5000/api/users/7/status    (admin: approve / suspend)
-// { "status": "active" }
+// PUT http://localhost:5000/api/users/7/status
 userRoutes.put("/:id/status", async (req, res) => {
     const { status, reason } = req.body;
     if (!["active", "pending", "suspended"].includes(status)) {
