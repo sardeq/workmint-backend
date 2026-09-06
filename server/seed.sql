@@ -1,63 +1,45 @@
--- =========================================================================
--- Seed data.  psql -d workmint -f seed.sql
---
--- Every password hash below is bcrypt('demo1234'), so all demo accounts sign
--- in with demo1234. Generate your own with:
---   node -e "console.log(require('bcryptjs').hashSync('demo1234',10))"
--- =========================================================================
-
 TRUNCATE disputes, change_requests, activity, messages,
-  milestones, orders, proposal_milestones, proposals, jobs, payment_methods,
+  milestones, orders, proposals, jobs, payment_methods,
   withdrawals, portfolio_items, users RESTART IDENTITY CASCADE;
 
--- ---------------------------------------------------------------- accounts
-INSERT INTO users (name, email, password_hash, role, status, company, title, bio,
+INSERT INTO users (name, email, password, role, status, company, title, bio,
                    skills, hourly_rate, location, timezone, languages, rating, portfolio_url, pitch)
 VALUES
-  ('Rana Haddad', 'rana@techcorp.com',
-   '$2b$10$w7MGnCm0lnLE/FWytUxjeOF1J0CwtWr8iKbDxN73qxMQDPZ1T11Je',
+  ('Rana Haddad', 'rana@techcorp.com', 'demo1234',
    'client', 'active', 'TechCorp', 'Head of engineering', NULL,
    '{}', NULL, 'Amman, Jordan', 'GMT+3', NULL, 4.9, NULL, NULL),
 
-  ('Sadeq Odeh', 'sadeq@workmint.dev',
-   '$2b$10$w7MGnCm0lnLE/FWytUxjeOF1J0CwtWr8iKbDxN73qxMQDPZ1T11Je',
+  ('Sadeq Odeh', 'sadeq@workmint.dev', 'demo1234',
    'freelancer', 'active', NULL, 'Full-stack developer - React & .NET',
    'Builds scalable web applications, REST APIs and the database layer underneath them.',
    '{React.js,.NET,C++,PostgreSQL}', 45, 'Amman, Jordan', 'GMT+3',
    'Arabic (native), English (fluent)', 4.9, NULL, NULL),
 
-  ('Workmint Ops', 'ops@workmint.com',
-   '$2b$10$w7MGnCm0lnLE/FWytUxjeOF1J0CwtWr8iKbDxN73qxMQDPZ1T11Je',
+  ('Workmint Ops', 'ops@workmint.com', 'demo1234',
    'admin', 'active', NULL, 'Platform operations', NULL, '{}', NULL, NULL, NULL, NULL, 5.0, NULL, NULL),
 
-  ('Layla Nasser', 'layla@nasser.dev',
-   '$2b$10$w7MGnCm0lnLE/FWytUxjeOF1J0CwtWr8iKbDxN73qxMQDPZ1T11Je',
+  ('Layla Nasser', 'layla@nasser.dev', 'demo1234',
    'freelancer', 'active', NULL, 'Data visualisation engineer',
    'Analytics pipelines and the dashboards on top of them.',
    '{Go,Kafka,PostgreSQL,Grafana}', 52, 'Beirut, Lebanon', 'GMT+3', 'Arabic, English', 4.8, NULL, NULL),
 
-  ('Karim Aziz', 'karim@aziz.io',
-   '$2b$10$w7MGnCm0lnLE/FWytUxjeOF1J0CwtWr8iKbDxN73qxMQDPZ1T11Je',
+  ('Karim Aziz', 'karim@aziz.io', 'demo1234',
    'freelancer', 'active', NULL, 'DevOps and platform engineer',
    'Pipeline migrations and on-call setup. Leaves runbooks behind.',
    '{Kubernetes,Terraform,Go}', 48, 'Cairo, Egypt', 'GMT+2', 'Arabic, English', 4.7, NULL, NULL),
 
-  -- waiting on screening, so the admin approvals queue is not empty
-  ('Yousef Amer', 'yousef.amer@mail.com',
-   '$2b$10$w7MGnCm0lnLE/FWytUxjeOF1J0CwtWr8iKbDxN73qxMQDPZ1T11Je',
+  ('Yousef Amer', 'yousef.amer@mail.com', 'demo1234',
    'freelancer', 'pending', NULL, 'Android developer', NULL,
    '{Kotlin,"Jetpack Compose",Firebase}', 40, 'Amman, Jordan', 'GMT+3', NULL, 5.0,
    'https://github.com/demo/yousef',
    'Six years of Android work, mostly logistics and field-service apps.'),
 
-  ('Tom Vale', 'tom@valeworks.com',
-   '$2b$10$w7MGnCm0lnLE/FWytUxjeOF1J0CwtWr8iKbDxN73qxMQDPZ1T11Je',
+  ('Tom Vale', 'tom@valeworks.com', 'demo1234',
    'client', 'suspended', 'Valeworks', 'Founder', NULL, '{}', NULL, NULL, NULL, NULL, 3.2, NULL, NULL);
 
 UPDATE users SET suspended_reason = 'Three chargebacks after milestone approval.'
 WHERE email = 'tom@valeworks.com';
 
--- --------------------------------------------------------------- portfolio
 INSERT INTO portfolio_items (user_id, title, tech, link, description) VALUES
   (2, 'Employee task tracking system', '{React,Node.js,PostgreSQL}',
    'https://github.com/demo/task-tracker',
@@ -66,12 +48,10 @@ INSERT INTO portfolio_items (user_id, title, tech, link, description) VALUES
    'https://github.com/demo/zyro',
    'Multi-process browser shell with a V8 IPC bridge and request interception.');
 
--- -------------------------------------------------------------- payment
 INSERT INTO payment_methods (client_id, label, kind, is_primary) VALUES
   (1, 'Visa ending 4417', 'Card', TRUE),
   (1, 'Arab Bank transfer', 'Bank', FALSE);
 
--- ------------------------------------------------------------------ jobs
 INSERT INTO jobs (client_id, title, description, budget, days, level, skills, status) VALUES
   (1, 'Realtime metrics service',
    'Stream ingestion events into a rollup service that powers per-second dashboards. Existing Kafka topics, we need the consumer and the storage layer.',
@@ -80,7 +60,6 @@ INSERT INTO jobs (client_id, title, description, budget, days, level, skills, st
    'Replace an ageing internal tool with a React panel. Designs are done, nine screens, the API already exists.',
    2000, 18, 'Intermediate', '{React.js,Bootstrap,"REST API"}', 'open');
 
--- ------------------------------------------------------------- proposals
 INSERT INTO proposals (job_id, freelancer_id, amount, days, cover, status) VALUES
   (1, 4, 4200, 28,
    'I built the rollup layer for a metrics product doing 40k events/sec on Kafka. The trap here is late-arriving events breaking your per-second buckets, so I would settle the windowing strategy with you before writing the consumer.',
@@ -89,14 +68,6 @@ INSERT INTO proposals (job_id, freelancer_id, amount, days, cover, status) VALUE
    'Cheapest path here is not a new service. I would run the consumer as a sidecar on your existing cluster and reuse the Postgres you already pay for.',
    'Pending');
 
-INSERT INTO proposal_milestones (proposal_id, position, title, amount) VALUES
-  (1, 1, 'Consumer + windowing', 1800),
-  (1, 2, 'Rollup storage', 1400),
-  (1, 3, 'Load test & handover', 1000),
-  (2, 1, 'Consumer service', 2000),
-  (2, 2, 'Deploy & observability', 1600);
-
--- ---------------------------------------------------------------- orders
 INSERT INTO orders (client_id, freelancer_id, project, brief, started_on, deadline, revisions_included) VALUES
   (1, 2, 'C++ Systems Architecture',
    'Refactor the ingestion pipeline into modular services and document the threading model.',
@@ -142,8 +113,3 @@ INSERT INTO change_requests (order_id, reason, extra_cost, extra_days, status, c
 
 INSERT INTO withdrawals (freelancer_id, amount, method, status, at) VALUES
   (2, 720, 'Bank transfer', 'Paid', NOW() - INTERVAL '20 days');
-
--- Sanity check: the seed should leave 7 users, 2 orders and 6 milestones.
-SELECT COUNT(*) AS users FROM users;
-SELECT COUNT(*) AS orders FROM orders;
-SELECT COUNT(*) AS milestones FROM milestones;

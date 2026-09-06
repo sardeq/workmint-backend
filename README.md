@@ -15,6 +15,7 @@ the work milestone by milestone.
 | Database  | PostgreSQL                                 |
 | Config    | `dotenv`                                   |
 | CORS      | `cors`                                     |
+| Dev restart | `nodemon`                                |
 
 ---
 
@@ -47,7 +48,7 @@ npm run dev             # restarts on file changes
 npm start               # plain run
 ```
 
-The server prints `Connected to PostgreSQL` and `Listening on PORT 5000` when it is up.
+The server prints `Connected to PostgreSQL` and `Server running on http://localhost:5000` when it is up.
 Visit <http://localhost:5000/> for a health message.
 
 ### Environment variables
@@ -105,7 +106,7 @@ Base URL: `http://localhost:5000/api`
 | `GET`    | `/users`            | List; optional `?role=` and `?status=`    |
 | `GET`    | `/users/:id`        | One account                               |
 | `POST`   | `/users`            | Register                                  |
-| `POST`   | `/users/login`      | Sign in                                   |
+| `POST`   | `/users/login`      | Sign in (email + password)                |
 | `PUT`    | `/users/:id`        | Edit profile                              |
 | `PUT`    | `/users/:id/status` | Admin: approve, suspend, reinstate        |
 | `DELETE` | `/users/:id`        | Remove an account                         |
@@ -178,3 +179,17 @@ Base URL: `http://localhost:5000/api`
 | `DELETE` | `/payment-methods/:id`          | Remove                                     |
 
 ---
+
+## Demo accounts
+
+`seed.sql` creates these. Every one of them uses the password `demo1234`.
+
+| Email                  | Role       |
+| ---------------------- | ---------- |
+| `rana@techcorp.com`    | client     |
+| `sadeq@workmint.dev`   | freelancer |
+| `ops@workmint.com`     | admin      |
+
+Passwords are stored as plain text in the `users` table. That keeps the sign-in code to a
+single `SELECT ... WHERE email = $1 AND password = $2`, which is the point of this
+project, but it is not how you would store a password in something real.

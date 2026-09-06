@@ -1,168 +1,152 @@
 import express from "express";
-import bcrypt from "bcryptjs";
-import pgclient from "../db/db.js";
+import db from "../db/db.js";
 
-const userRoutes = express.Router();
+const router = express.Router();
 
-const USER_COLUMNS = `id, name, email, role, status, company, title, bio,
-                      skills, hourly_rate, available, location, rating, joined_at`;
+const COLUMNS = `id, name, email, role, status, company, title, bio, skills,
+                 hourly_rate, available, response_hours, languages, timezone,
+                 location, rating, portfolio_url, pitch, suspended_reason, joined_at`;
 
-// GET http://localhost:5000/api/users
-// GET http://localhost:5000/api/users?role=freelancer&status=active
-userRoutes.get("/", async (req, res) => {
-    const { role, status } = req.query;
-    try {
-        // Build the WHERE clause from whichever filters were sent.
-        let sql = `SELECT ${USER_COLUMNS} FROM users WHERE 1 = 1`;
-        const values = [];
+router.get("/", async (req, res) => {
+  const { role, status } = req.query;
 
-        if (role) {
-            values.push(role);
-            sql = sql + ` AND role = $${values.length}`;
-        }
-        if (status) {
-            values.push(status);
-            sql = sql + ` AND status = $${values.length}`;
-        }
-        sql = sql + " ORDER BY id";
+  if (role && status) {
+    const result = await db.query(
+      `SELECT ${COLUMNS} FROM users WHERE role = $1 AND status = $2 ORDER BY id`,
+      [role, status]
+    );
+    return res.json(result.rows);
+  }
 
-        const result = await pgclient.query(sql, values);
-        res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ error: "Internal server error" });
-    }
+  if (role) {
+    const result = await db.query(
+      `SELECT ${COLUMNS} FROM users WHERE role = $1 ORDER BY id`,
+      [role]
+    );
+    return res.json(result.rows);
+  }
+
+  if (status) {
+    const result = await db.query(
+      `SELECT ${COLUMNS} FROM users WHERE status = $1 ORDER BY id`,
+      [status]
+    );
+    return res.json(result.rows);
+  }
+
+  const result = await db.query(`SELECT ${COLUMNS} FROM users ORDER BY id`);
+  res.json(result.rows);
 });
 
-// GET http://localhost:5000/api/users/2
-userRoutes.get("/:id", async (req, res) => {
-    try {
-        const result = await pgclient.query(
-            `SELECT ${USER_COLUMNS} FROM users WHERE id = $1`,
-            [req.params.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: "User not found" });
-        }
-        res.json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ error: "Internal server error" });
-    }
+router.get("/:id", async (req, res) => {
+  const result = await db.query(
+    `SELECT ${COLUMNS} FROM users WHERE id = $1`,
+    [req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "User not found" });
+  }
+  res.json(result.rows[0]);
 });
 
-// POST http://localhost:5000/api/users     (register)
-userRoutes.post("/", async (req, res) => {
-    const { name, email, password, role, company, title } = req.body;
+router.post("/", async (req, res) => {
+  const { name, email, password, role, company, title } = req.body;
 
-    if (!name || !email || !password || !role) {
-        return res.status(400).json({ message: "name, email, password and role are required" });
-    }
-    if (password.length < 8) {
-        return res.status(400).json({ message: "Password must be at least 8 characters" });
-    }
+  if (!name || !email || !password || !role) {
+    return res.status(400).json({ message: "name, email, password and role are required" });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ message: "Password must be at least 8 characters" });
+  }
 
-    try {
-        const status = role === "freelancer" ? "pending" : "active";
-        const hash = await bcrypt.hash(password, 10);
+  const taken = await db.query("SELECT id FROM users WHERE email = LOWER($1)", [email]);
+  if (taken.rows.length > 0) {
+    return res.status(409).json({ message: "An account already uses that email" });
+  }
 
-        const result = await pgclient.query(
-            `INSERT INTO users (name, email, password_hash, role, status, company, title)
-             VALUES ($1, LOWER($2), $3, $4, $5, $6, $7)
-             RETURNING ${USER_COLUMNS}`,
-            [name, email, hash, role, status, company || null, title || null]
-        );
-        res.status(201).json(result.rows[0]);
-    } catch (err) {
-        // 23505 is the unique violation on the email column
-        if (err.code === "23505") {
-            return res.status(409).json({ message: "An account already uses that email" });
-        }
-        res.status(500).json({ error: "Internal server error" });
-    }
+  const status = role === "freelancer" ? "pending" : "active";
+
+  const result = await db.query(
+    `INSERT INTO users (name, email, password, role, status, company, title)
+     VALUES ($1, LOWER($2), $3, $4, $5, $6, $7)
+     RETURNING ${COLUMNS}`,
+    [name, email, password, role, status, company || null, title || null]
+  );
+
+  res.status(201).json(result.rows[0]);
 });
 
-// POST http://localhost:5000/api/users/login
-userRoutes.post("/login", async (req, res) => {
-    const { email, password } = req.body;
-    try {
-        const result = await pgclient.query(
-            "SELECT * FROM users WHERE email = LOWER($1)",
-            [email]
-        );
-        const user = result.rows[0];
+router.post("/login", async (req, res) => {
+  const { email, password } = req.body;
 
-        if (!user || !(await bcrypt.compare(password || "", user.password_hash))) {
-            return res.status(401).json({ message: "Wrong email or password" });
-        }
-        if (user.status === "pending") {
-            return res.status(403).json({ message: "Your account is still being reviewed" });
-        }
-        if (user.status === "suspended") {
-            return res.status(403).json({ message: "This account is suspended" });
-        }
+  const result = await db.query(
+    `SELECT ${COLUMNS} FROM users WHERE email = LOWER($1) AND password = $2`,
+    [email, password]
+  );
 
-        delete user.password_hash;
-        res.json(user);
-    } catch (err) {
-        res.status(500).json({ error: "Internal server error" });
-    }
+  if (result.rows.length === 0) {
+    return res.status(401).json({ message: "Wrong email or password" });
+  }
+
+  const user = result.rows[0];
+
+  if (user.status === "pending") {
+    return res.status(403).json({ message: "Your account is still being reviewed" });
+  }
+  if (user.status === "suspended") {
+    return res.status(403).json({ message: "This account is suspended" });
+  }
+
+  res.json(user);
 });
 
-// PUT http://localhost:5000/api/users/2    (edit profile)
-userRoutes.put("/:id", async (req, res) => {
-    const { name, title, bio, skills, hourly_rate, available, location, company } = req.body;
-    try {
-        const result = await pgclient.query(
-            `UPDATE users
-             SET name = $1, title = $2, bio = $3, skills = $4,
-                 hourly_rate = $5, available = $6, location = $7, company = $8
-             WHERE id = $9
-             RETURNING ${USER_COLUMNS}`,
-            [name, title, bio, skills, hourly_rate, available, location, company, req.params.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: "User not found" });
-        }
-        res.json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ error: "Internal server error" });
-    }
+router.put("/:id", async (req, res) => {
+  const { name, title, bio, skills, hourly_rate, available, location, company } = req.body;
+
+  const result = await db.query(
+    `UPDATE users
+     SET name = $1, title = $2, bio = $3, skills = $4, hourly_rate = $5,
+         available = $6, location = $7, company = $8
+     WHERE id = $9
+     RETURNING ${COLUMNS}`,
+    [name, title, bio, skills, hourly_rate, available, location, company, req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "User not found" });
+  }
+  res.json(result.rows[0]);
 });
 
-// PUT http://localhost:5000/api/users/7/status
-userRoutes.put("/:id/status", async (req, res) => {
-    const { status, reason } = req.body;
-    if (!["active", "pending", "suspended"].includes(status)) {
-        return res.status(400).json({ message: "status must be active, pending or suspended" });
-    }
-    try {
-        const result = await pgclient.query(
-            `UPDATE users SET status = $1, suspended_reason = $2
-             WHERE id = $3 RETURNING ${USER_COLUMNS}`,
-            [status, status === "suspended" ? reason : null, req.params.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: "User not found" });
-        }
-        res.json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ error: "Internal server error" });
-    }
+router.put("/:id/status", async (req, res) => {
+  const { status, reason } = req.body;
+
+  if (!["active", "pending", "suspended"].includes(status)) {
+    return res.status(400).json({ message: "status must be active, pending or suspended" });
+  }
+
+  const result = await db.query(
+    `UPDATE users SET status = $1, suspended_reason = $2 WHERE id = $3 RETURNING ${COLUMNS}`,
+    [status, status === "suspended" ? reason : null, req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "User not found" });
+  }
+  res.json(result.rows[0]);
 });
 
-// DELETE http://localhost:5000/api/users/7
-userRoutes.delete("/:id", async (req, res) => {
-    try {
-        const result = await pgclient.query(
-            "DELETE FROM users WHERE id = $1 RETURNING id, name, email",
-            [req.params.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: "User not found" });
-        }
-        res.json({ message: "User deleted", user: result.rows[0] });
-    } catch (err) {
-        res.status(500).json({ error: "Internal server error" });
-    }
+router.delete("/:id", async (req, res) => {
+  const result = await db.query(
+    "DELETE FROM users WHERE id = $1 RETURNING id, name, email",
+    [req.params.id]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "User not found" });
+  }
+  res.json({ message: "User deleted", user: result.rows[0] });
 });
 
-export default userRoutes;
+export default router;
