@@ -1,8 +1,8 @@
 import express from "express";
-import dotenv from "dotenv";
 import cors from "cors";
+import dotenv from "dotenv";
 
-import pgclient from "./db/db.js";
+import db from "./db/db.js";
 import userRoutes from "./routes/users.js";
 import jobRoutes from "./routes/jobs.js";
 import proposalRoutes from "./routes/proposals.js";
@@ -14,17 +14,16 @@ import portfolioRoutes from "./routes/portfolio.js";
 import withdrawalRoutes from "./routes/withdrawals.js";
 import paymentMethodRoutes from "./routes/paymentMethods.js";
 
-const app = express();
 dotenv.config();
 
-// Middlewares
-app.use(cors()); // open for anyone
-app.use(express.json());
-
+const app = express();
 const PORT = process.env.PORT || 5000;
 
+app.use(cors());
+app.use(express.json());
+
 app.get("/", (req, res) => {
-    res.send("Welcome to the Workmint API server");
+  res.send("Workmint API is running");
 });
 
 app.use("/api/users", userRoutes);
@@ -38,13 +37,7 @@ app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/withdrawals", withdrawalRoutes);
 app.use("/api/payment-methods", paymentMethodRoutes);
 
-app.use((req, res) => {
-    res.status(404).json({ message: "Route not found" });
-});
-
-pgclient.connect().then(() => {
-    console.log("Connected to PostgreSQL");
-    app.listen(PORT, () => {
-        console.log(`Listening on PORT ${PORT}`);
-    });
+db.connect().then(() => {
+  console.log("Connected to PostgreSQL");
+  app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 });
