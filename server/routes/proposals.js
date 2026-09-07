@@ -1,19 +1,19 @@
 import express from "express";
 import db from "../db/db.js";
-import { addDays, addActivity } from "../helpers.js";
 
 const router = express.Router();
 
 const PROPOSAL_SELECT = `SELECT p.*, j.title AS job_title, j.budget AS job_budget,
-                           c.company AS client, f.name AS freelancer_name,
-                           f.title AS freelancer_title, f.rating, f.skills
+                           j.client_id, c.company AS client,
+                           f.name AS freelancer_name, f.title AS freelancer_title,
+                           f.rating, f.skills
                          FROM proposals p
                          JOIN jobs j ON j.id = p.job_id
                          JOIN users c ON c.id = j.client_id
                          JOIN users f ON f.id = p.freelancer_id`;
 
 router.get("/", async (req, res) => {
-  const { freelancer_id, client_id, job_id } = req.query;
+  const { freelancer_id, client_id } = req.query;
 
   if (freelancer_id) {
     const result = await db.query(
@@ -31,25 +31,8 @@ router.get("/", async (req, res) => {
     return res.json(result.rows);
   }
 
-  if (job_id) {
-    const result = await db.query(
-      `${PROPOSAL_SELECT} WHERE p.job_id = $1 ORDER BY p.sent_at DESC`,
-      [job_id]
-    );
-    return res.json(result.rows);
-  }
-
   const result = await db.query(`${PROPOSAL_SELECT} ORDER BY p.sent_at DESC`);
   res.json(result.rows);
-});
-
-router.get("/:id", async (req, res) => {
-  const result = await db.query("SELECT * FROM proposals WHERE id = $1", [req.params.id]);
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ message: "Proposal not found" });
-  }
-  res.json(result.rows[0]);
 });
 
 router.post("/", async (req, res) => {
@@ -79,8 +62,8 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   const { status } = req.body;
 
-  if (!["Pending", "Interviewing", "Accepted", "Declined", "Withdrawn"].includes(status)) {
-    return res.status(400).json({ message: "Unknown status" });
+  if (!["Declined", "Withdrawn"].includes(status)) {
+    return res.status(400).json({ message: "status must be Declined or Withdrawn" });
   }
 
   const result = await db.query(
@@ -108,25 +91,21 @@ router.post("/:id/accept", async (req, res) => {
 
   const proposal = found.rows[0];
 
-  const order = await db.query(
-    `INSERT INTO orders (job_id, client_id, freelancer_id, project, brief, deadline)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+  const deadline = new Date();
+  deadline.setDate(deadline.getDate() + Number(proposal.days));
+
+  const contract = await db.query(
+    `INSERT INTO contracts (job_id, client_id, freelancer_id, title, brief, amount, deadline)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
     [
       proposal.job_id,
       proposal.client_id,
       proposal.freelancer_id,
       proposal.title,
       proposal.description,
-      addDays(proposal.days),
+      proposal.amount,
+      deadline.toISOString().slice(0, 10),
     ]
-  );
-
-  const orderId = order.rows[0].id;
-
-  await db.query(
-    `INSERT INTO milestones (order_id, position, title, amount, due_date, status)
-     VALUES ($1, 1, 'Full delivery', $2, $3, 'active')`,
-    [orderId, proposal.amount, addDays(proposal.days)]
   );
 
   await db.query("UPDATE proposals SET status = 'Accepted' WHERE id = $1", [proposal.id]);
@@ -135,21 +114,8 @@ router.post("/:id/accept", async (req, res) => {
     [proposal.job_id, proposal.id]
   );
   await db.query("UPDATE jobs SET status = 'filled' WHERE id = $1", [proposal.job_id]);
-  await addActivity(orderId, "system", `Escrow funded with $${proposal.amount}`);
 
-  res.status(201).json(order.rows[0]);
-});
-
-router.delete("/:id", async (req, res) => {
-  const result = await db.query(
-    "DELETE FROM proposals WHERE id = $1 RETURNING *",
-    [req.params.id]
-  );
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ message: "Proposal not found" });
-  }
-  res.json({ message: "Proposal deleted" });
+  res.status(201).json(contract.rows[0]);
 });
 
 export default router;
