@@ -1,5 +1,6 @@
 import express from "express";
 import db from "../db/db.js";
+import asyncHandler from "../middleware/asyncHandler.js";
 
 const router = express.Router();
 
@@ -12,7 +13,7 @@ const PROPOSAL_SELECT = `SELECT p.*, j.title AS job_title, j.budget AS job_budge
                          JOIN users c ON c.id = j.client_id
                          JOIN users f ON f.id = p.freelancer_id`;
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const { freelancer_id, client_id } = req.query;
 
   if (freelancer_id) {
@@ -33,9 +34,9 @@ router.get("/", async (req, res) => {
 
   const result = await db.query(`${PROPOSAL_SELECT} ORDER BY p.sent_at DESC`);
   res.json(result.rows);
-});
+}));
 
-router.post("/", async (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const { job_id, freelancer_id, amount, days, cover } = req.body;
 
   if (!job_id || !freelancer_id || !amount || !days || !cover) {
@@ -57,9 +58,9 @@ router.post("/", async (req, res) => {
   );
 
   res.status(201).json(result.rows[0]);
-});
+}));
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", asyncHandler(async (req, res) => {
   const { status } = req.body;
 
   if (!["Declined", "Withdrawn"].includes(status)) {
@@ -75,9 +76,9 @@ router.put("/:id", async (req, res) => {
     return res.status(404).json({ message: "Proposal not found" });
   }
   res.json(result.rows[0]);
-});
+}));
 
-router.post("/:id/accept", async (req, res) => {
+router.post("/:id/accept", asyncHandler(async (req, res) => {
   const found = await db.query(
     `SELECT p.*, j.client_id, j.title, j.description
      FROM proposals p JOIN jobs j ON j.id = p.job_id
@@ -116,6 +117,6 @@ router.post("/:id/accept", async (req, res) => {
   await db.query("UPDATE jobs SET status = 'filled' WHERE id = $1", [proposal.job_id]);
 
   res.status(201).json(contract.rows[0]);
-});
+}));
 
 export default router;
