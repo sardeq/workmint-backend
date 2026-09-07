@@ -1,12 +1,8 @@
--- Workmint database schema (PostgreSQL)
--- Run this file once to create the tables, then run seed.sql to fill them.
---   psql -U postgres -d workmint -f server/schema.sql
---   psql -U postgres -d workmint -f server/seed.sql
+
 
 DROP TABLE IF EXISTS payments, withdrawals, payment_methods, messages,
   contracts, proposals, jobs, portfolio_items, users CASCADE;
 
--- Every account on the platform: clients, freelancers and admins.
 CREATE TABLE users (
   id               SERIAL PRIMARY KEY,
   name             TEXT NOT NULL,
@@ -27,7 +23,6 @@ CREATE TABLE users (
   joined_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Past work a freelancer shows on their profile.
 CREATE TABLE portfolio_items (
   id          SERIAL PRIMARY KEY,
   user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -38,7 +33,6 @@ CREATE TABLE portfolio_items (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- A job a client posts to the marketplace.
 CREATE TABLE jobs (
   id          SERIAL PRIMARY KEY,
   client_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -54,7 +48,6 @@ CREATE TABLE jobs (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- A freelancer's bid on a job.
 CREATE TABLE proposals (
   id            SERIAL PRIMARY KEY,
   job_id        INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
@@ -67,8 +60,6 @@ CREATE TABLE proposals (
   sent_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Created when a client accepts a proposal. One contract has one price and
--- one status, and moves in_progress -> delivered -> approved.
 CREATE TABLE contracts (
   id            SERIAL PRIMARY KEY,
   job_id        INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
@@ -88,7 +79,6 @@ CREATE TABLE contracts (
   approved_at   TIMESTAMPTZ
 );
 
--- One chat thread per contract.
 CREATE TABLE messages (
   id          SERIAL PRIMARY KEY,
   contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
@@ -97,7 +87,6 @@ CREATE TABLE messages (
   sent_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- A card or account the client pays from.
 CREATE TABLE payment_methods (
   id        SERIAL PRIMARY KEY,
   client_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -105,8 +94,6 @@ CREATE TABLE payment_methods (
   kind      TEXT NOT NULL CHECK (kind IN ('Card', 'Bank', 'PayPal'))
 );
 
--- A payment the client made. The exchange rate used at the time is stored
--- with the row so the receipt never changes when rates move.
 CREATE TABLE payments (
   id               SERIAL PRIMARY KEY,
   client_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -119,7 +106,6 @@ CREATE TABLE payments (
   paid_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- A freelancer moving cleared earnings out of the platform.
 CREATE TABLE withdrawals (
   id            SERIAL PRIMARY KEY,
   freelancer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
