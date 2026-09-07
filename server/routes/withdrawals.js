@@ -1,9 +1,10 @@
 import express from "express";
 import db from "../db/db.js";
+import asyncHandler from "../middleware/asyncHandler.js";
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const { freelancer_id } = req.query;
 
   if (!freelancer_id) {
@@ -15,9 +16,9 @@ router.get("/", async (req, res) => {
     [freelancer_id]
   );
   res.json(result.rows);
-});
+}));
 
-router.post("/", async (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const { freelancer_id, amount, method } = req.body;
 
   if (!freelancer_id || !amount || !method) {
@@ -33,6 +34,6 @@ router.post("/", async (req, res) => {
   );
 
   res.status(201).json(result.rows[0]);
-});
+}));
 
 export default router;

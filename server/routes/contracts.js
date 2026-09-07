@@ -1,8 +1,8 @@
 import express from "express";
 import db from "../db/db.js";
+import asyncHandler from "../middleware/asyncHandler.js";
 
 const router = express.Router();
-
 
 const CONTRACT_SELECT = `SELECT c.*, cl.company AS client, cl.name AS client_contact,
                            f.name AS freelancer_name, f.title AS freelancer_title, f.rating
@@ -10,7 +10,7 @@ const CONTRACT_SELECT = `SELECT c.*, cl.company AS client, cl.name AS client_con
                          JOIN users cl ON cl.id = c.client_id
                          JOIN users f  ON f.id  = c.freelancer_id`;
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const { client_id, freelancer_id } = req.query;
 
   if (client_id) {
@@ -31,9 +31,9 @@ router.get("/", async (req, res) => {
 
   const result = await db.query(`${CONTRACT_SELECT} ORDER BY c.deadline`);
   res.json(result.rows);
-});
+}));
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", asyncHandler(async (req, res) => {
   const contract = await db.query(`${CONTRACT_SELECT} WHERE c.id = $1`, [req.params.id]);
 
   if (contract.rows.length === 0) {
@@ -46,9 +46,9 @@ router.get("/:id", async (req, res) => {
   );
 
   res.json({ ...contract.rows[0], messages: messages.rows });
-});
+}));
 
-router.put("/:id/deliver", async (req, res) => {
+router.put("/:id/deliver", asyncHandler(async (req, res) => {
   const { link, note } = req.body;
 
   if (!link) {
@@ -67,9 +67,9 @@ router.put("/:id/deliver", async (req, res) => {
     return res.status(400).json({ message: "This contract is not waiting on a delivery" });
   }
   res.json(result.rows[0]);
-});
+}));
 
-router.put("/:id/approve", async (req, res) => {
+router.put("/:id/approve", asyncHandler(async (req, res) => {
   const result = await db.query(
     `UPDATE contracts
      SET status = 'approved', approved_at = NOW()
@@ -82,10 +82,9 @@ router.put("/:id/approve", async (req, res) => {
     return res.status(400).json({ message: "Nothing has been delivered to approve" });
   }
   res.json(result.rows[0]);
-});
+}));
 
-
-router.put("/:id/revision", async (req, res) => {
+router.put("/:id/revision", asyncHandler(async (req, res) => {
   const { note } = req.body;
 
   if (!note) {
@@ -104,9 +103,9 @@ router.put("/:id/revision", async (req, res) => {
     return res.status(400).json({ message: "Nothing has been delivered to send back" });
   }
   res.json(result.rows[0]);
-});
+}));
 
-router.put("/:id/cancel", async (req, res) => {
+router.put("/:id/cancel", asyncHandler(async (req, res) => {
   const result = await db.query(
     `UPDATE contracts
      SET status = 'cancelled'
@@ -119,6 +118,6 @@ router.put("/:id/cancel", async (req, res) => {
     return res.status(400).json({ message: "A finished contract cannot be cancelled" });
   }
   res.json(result.rows[0]);
-});
+}));
 
 export default router;

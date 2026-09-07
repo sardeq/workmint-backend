@@ -1,9 +1,11 @@
 import express from "express";
 import db from "../db/db.js";
+import asyncHandler from "../middleware/asyncHandler.js";
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
+// GET /api/portfolio?user_id=2
+router.get("/", asyncHandler(async (req, res) => {
   const { user_id } = req.query;
 
   if (!user_id) {
@@ -15,9 +17,9 @@ router.get("/", async (req, res) => {
     [user_id]
   );
   res.json(result.rows);
-});
+}));
 
-router.post("/", async (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const { user_id, title, tech, link, description } = req.body;
 
   if (!user_id || !title) {
@@ -31,9 +33,9 @@ router.post("/", async (req, res) => {
   );
 
   res.status(201).json(result.rows[0]);
-});
+}));
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", asyncHandler(async (req, res) => {
   const { title, tech, link, description } = req.body;
 
   const result = await db.query(
@@ -47,9 +49,9 @@ router.put("/:id", async (req, res) => {
     return res.status(404).json({ message: "Portfolio item not found" });
   }
   res.json(result.rows[0]);
-});
+}));
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", asyncHandler(async (req, res) => {
   const result = await db.query(
     "DELETE FROM portfolio_items WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -59,6 +61,6 @@ router.delete("/:id", async (req, res) => {
     return res.status(404).json({ message: "Portfolio item not found" });
   }
   res.json({ message: "Portfolio item removed", item: result.rows[0] });
-});
+}));
 
 export default router;

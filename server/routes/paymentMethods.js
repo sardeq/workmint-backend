@@ -1,9 +1,10 @@
 import express from "express";
 import db from "../db/db.js";
+import asyncHandler from "../middleware/asyncHandler.js";
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const { client_id } = req.query;
 
   if (!client_id) {
@@ -15,9 +16,9 @@ router.get("/", async (req, res) => {
     [client_id]
   );
   res.json(result.rows);
-});
+}));
 
-router.post("/", async (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const { client_id, label, kind } = req.body;
 
   if (!client_id || !label || !kind) {
@@ -30,9 +31,9 @@ router.post("/", async (req, res) => {
   );
 
   res.status(201).json(result.rows[0]);
-});
+}));
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", asyncHandler(async (req, res) => {
   const result = await db.query(
     "DELETE FROM payment_methods WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -42,6 +43,6 @@ router.delete("/:id", async (req, res) => {
     return res.status(404).json({ message: "Payment method not found" });
   }
   res.json({ message: "Payment method removed", method: result.rows[0] });
-});
+}));
 
 export default router;

@@ -1,5 +1,6 @@
 import express from "express";
 import db from "../db/db.js";
+import asyncHandler from "../middleware/asyncHandler.js";
 import adminOnly from "../middleware/adminOnly.js";
 
 const router = express.Router();
@@ -7,7 +8,7 @@ const router = express.Router();
 const COLUMNS = `id, name, email, role, status, company, title, bio, skills,
                  hourly_rate, available, rating, location, suspended_reason, joined_at`;
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const { role } = req.query;
 
   if (role) {
@@ -20,18 +21,18 @@ router.get("/", async (req, res) => {
 
   const result = await db.query(`SELECT ${COLUMNS} FROM users ORDER BY id`);
   res.json(result.rows);
-});
+}));
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", asyncHandler(async (req, res) => {
   const result = await db.query(`SELECT ${COLUMNS} FROM users WHERE id = $1`, [req.params.id]);
 
   if (result.rows.length === 0) {
     return res.status(404).json({ message: "User not found" });
   }
   res.json(result.rows[0]);
-});
+}));
 
-router.post("/", async (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const { name, email, password, role, company, title } = req.body;
 
   if (!name || !email || !password || !role) {
@@ -56,9 +57,9 @@ router.post("/", async (req, res) => {
   );
 
   res.status(201).json(result.rows[0]);
-});
+}));
 
-router.post("/login", async (req, res) => {
+router.post("/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
   const result = await db.query(
@@ -80,9 +81,9 @@ router.post("/login", async (req, res) => {
   }
 
   res.json(user);
-});
+}));
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", asyncHandler(async (req, res) => {
   const { name, title, bio, skills, hourly_rate, available, location, company } = req.body;
 
   const result = await db.query(
@@ -98,9 +99,9 @@ router.put("/:id", async (req, res) => {
     return res.status(404).json({ message: "User not found" });
   }
   res.json(result.rows[0]);
-});
+}));
 
-router.put("/:id/status", adminOnly, async (req, res) => {
+router.put("/:id/status", adminOnly, asyncHandler(async (req, res) => {
   const { status, reason } = req.body;
 
   if (!["active", "pending", "suspended"].includes(status)) {
@@ -116,9 +117,9 @@ router.put("/:id/status", adminOnly, async (req, res) => {
     return res.status(404).json({ message: "User not found" });
   }
   res.json(result.rows[0]);
-});
+}));
 
-router.delete("/:id", adminOnly, async (req, res) => {
+router.delete("/:id", adminOnly, asyncHandler(async (req, res) => {
   const result = await db.query(
     "DELETE FROM users WHERE id = $1 RETURNING id, name, email",
     [req.params.id]
@@ -128,6 +129,6 @@ router.delete("/:id", adminOnly, async (req, res) => {
     return res.status(404).json({ message: "User not found" });
   }
   res.json({ message: "User deleted", user: result.rows[0] });
-});
+}));
 
 export default router;

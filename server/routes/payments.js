@@ -1,15 +1,17 @@
 import express from "express";
 import db from "../db/db.js";
+import asyncHandler from "../middleware/asyncHandler.js";
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const { client_id } = req.query;
 
   if (!client_id) {
     return res.status(400).json({ message: "client_id is required" });
   }
 
+  // The label of the card or account is joined in so the table can show it.
   const result = await db.query(
     `SELECT p.*, m.label AS method_label
      FROM payments p
@@ -19,9 +21,9 @@ router.get("/", async (req, res) => {
     [client_id]
   );
   res.json(result.rows);
-});
+}));
 
-router.post("/", async (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const { client_id, method_id, note, amount_usd, currency, rate, amount_converted } = req.body;
 
   if (!client_id || !note || !amount_usd || !currency || !rate) {
@@ -38,6 +40,6 @@ router.post("/", async (req, res) => {
   );
 
   res.status(201).json(result.rows[0]);
-});
+}));
 
 export default router;
