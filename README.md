@@ -1,21 +1,22 @@
 # Workmint — API Server
 
 REST API for **Workmint**, a freelance marketplace where clients post jobs, freelancers
-send proposals, and the money for each project sits in escrow until the client approves
-the work milestone by milestone.
+send proposals, and the money for each contract sits in escrow until the client approves
+the delivered work.
+
+The React front end lives in a separate repository and talks to this API over HTTP.
 
 ---
 
 ## Tech stack
 
-| Layer     | Choice                                     |
-| --------- | ------------------------------------------ |
-| Runtime   | Node.js                                    |
-| Framework | Express                                    |
-| Database  | PostgreSQL                                 |
-| Config    | `dotenv`                                   |
-| CORS      | `cors`                                     |
-| Dev restart | `nodemon`                                |
+| Layer       | Choice     |
+| ----------- | ---------- |
+| Runtime     | Node.js    |
+| Framework   | Express    |
+| Database    | PostgreSQL |
+| Config      | `dotenv`   |
+| CORS        | `cors`     |
 
 ---
 
@@ -36,37 +37,29 @@ npm install
 # 2. create the database
 createdb workmint-db
 
-# 3. create the tables, then fill them with data
+# 3. create the tables, then fill them with demo data
 psql -d workmint-db -f server/schema.sql
 psql -d workmint-db -f server/seed.sql
 
-# 4. configure the connection (see below)
+# 4. configure the connection
 cp .env.example .env    # then edit it
 
 # 5. run it
-npm run dev             # restarts on file changes
+npm run dev             # nodemon, restarts on file changes
 npm start               # plain run
 ```
 
-The server prints `Connected to PostgreSQL` and `Server running on http://localhost:5000` when it is up.
-Visit <http://localhost:5000/> for a health message.
+The server prints `Connected to PostgreSQL` and `Server running on http://localhost:5000`
 
 ### Environment variables
 
 Create a `.env` file in the project root:
 
-| Variable       | Example                                              | Notes                        |
-| -------------- | ---------------------------------------------------- | ---------------------------- |
-| `DATABASE_URL` | `postgres://user@/workmint-db?host=/run/postgresql`  | Any valid libpq URL          |
-| `PORT`         | `5000`                                               | Defaults to 5000 if not set  |
+| Variable       | Example                                             | Notes                       |
+| -------------- | --------------------------------------------------- | --------------------------- |
+| `DATABASE_URL` | `postgres://user:password@localhost:5432/workmint-db` | Any valid PostgreSQL URL  |
+| `PORT`         | `5000`                                              | Defaults to 5000 if not set |
 
-A TCP connection string works just as well:
-
-```
-DATABASE_URL=postgres://user:password@localhost:5432/workmint-db
-```
-
-`.env` is ignored by git — never commit real credentials.
 
 ---
 
@@ -74,23 +67,48 @@ DATABASE_URL=postgres://user:password@localhost:5432/workmint-db
 
 ```
 server/
-├── index.js            
-├── helpers.js       
-├── schema.sql       
-├── seed.sql           
+├── index.js  
+├── schema.sql
+├── seed.sql  
 ├── db/
-│   └── db.js        
+│   └── db.js 
+├── middleware/
+│   └── adminOnly.js
 └── routes/
-    ├── users.js     
-    ├── jobs.js         
-    ├── proposals.js        
-    ├── orders.js        
-    ├── milestones.js     
-    ├── messages.js       
-    ├── disputes.js        
-    ├── portfolio.js       
-    ├── withdrawals.js      
-    └── paymentMethods.js 
+    ├── users.js 
+    ├── portfolio.js 
+    ├── jobs.js        
+    ├── proposals.js  
+    ├── contracts.js     
+    ├── messages.js     
+    ├── payments.js   
+    ├── paymentMethods.js
+    └── withdrawals.js
+```
+
+Each router owns one table. `index.js` mounts them under a URL prefix, so
+`router.get("/")` inside `jobs.js` is served at `/api/jobs`.
+
+---
+
+## Data model
+
+Nine tables. The important relationship is the chain a piece of work travels down:
+
+```
+users ──posts──> jobs ──receives──> proposals ──accepted──> contracts ──has──> messages
+  │                                                              │
+  ├── portfolio_items                                            │
+  ├── payment_methods ──used by──> payments                      │
+  └── withdrawals <───────────── money released when approved ───┘
+```
+
+A **contract** has one price and one status. It moves:
+
+```
+in_progress ──deliver──> delivered ──approve──> approved
+                             │
+                             └──revision──> revision ──deliver──> delivered
 ```
 
 ---
@@ -101,82 +119,95 @@ Base URL: `http://localhost:5000/api`
 
 ### Users
 
-| Method   | Endpoint            | Purpose                                   |
-| -------- | ------------------- | ----------------------------------------- |
-| `GET`    | `/users`            | List; optional `?role=` and `?status=`    |
-| `GET`    | `/users/:id`        | One account                               |
-| `POST`   | `/users`            | Register                                  |
-| `POST`   | `/users/login`      | Sign in (email + password)                |
-| `PUT`    | `/users/:id`        | Edit profile                              |
-| `PUT`    | `/users/:id/status` | Admin: approve, suspend, reinstate        |
-| `DELETE` | `/users/:id`        | Remove an account                         |
+| Method   | Endpoint            | Purpose                                       |
+| -------- | ------------------- | --------------------------------------------- |
+| `GET`    | `/users`            | Every account. `?role=freelancer` returns only active freelancers |
+| `GET`    | `/users/:id`        | One account                                   |
+| `POST`   | `/users`            | Register. Freelancers are created as `pending` |
+| `POST`   | `/users/login`      | Sign in with email and password                |
+| `PUT`    | `/users/:id`        | Edit a profile                                |
+| `PUT`    | `/users/:id/status` | **admin** — approve, suspend or reinstate     |
+| `DELETE` | `/users/:id`        | **admin** — delete an account                 |
+
+### Portfolio
+
+| Method   | Endpoint                 | Purpose                     |
+| -------- | ------------------------ | --------------------------- |
+| `GET`    | `/portfolio?user_id=2`   | One freelancer's projects   |
+| `POST`   | `/portfolio`             | Add a project               |
+| `PUT`    | `/portfolio/:id`         | Edit a project              |
+| `DELETE` | `/portfolio/:id`         | Remove a project            |
 
 ### Jobs
 
-| Method   | Endpoint     | Purpose                                        |
-| -------- | ------------ | ---------------------------------------------- |
-| `GET`    | `/jobs`      | List; optional `?client_id=` and `?status=`    |
-| `GET`    | `/jobs/:id`  | One listing                                    |
-| `POST`   | `/jobs`      | Post a job                                     |
-| `PUT`    | `/jobs/:id`  | Edit a job                                     |
-| `DELETE` | `/jobs/:id`  | Close it and decline its pending proposals     |
+| Method   | Endpoint            | Purpose                                          |
+| -------- | ------------------- | ------------------------------------------------ |
+| `GET`    | `/jobs`             | Open listings. `?client_id=1` narrows it to one client |
+| `GET`    | `/jobs/:id`         | One listing                                      |
+| `POST`   | `/jobs`             | Post a job                                       |
+| `PUT`    | `/jobs/:id/close`   | Take it down and decline the open bids           |
+| `DELETE` | `/jobs/:id`         | **admin** — delete the listing and its proposals |
 
 ### Proposals
 
-| Method   | Endpoint               | Purpose                                                |
-| -------- | ---------------------- | ------------------------------------------------------ |
-| `GET`    | `/proposals`           | Filter by `?freelancer_id=`, `?client_id=`, `?job_id=` |
-| `POST`   | `/proposals`           | Apply to a job                                         |
-| `PUT`    | `/proposals/:id`       | Change status (decline, withdraw…)                     |
-| `POST`   | `/proposals/:id/accept`| Hire: creates the order and its milestones             |
-| `DELETE` | `/proposals/:id`       | Delete                                                 |
+| Method | Endpoint                 | Purpose                                              |
+| ------ | ------------------------ | ---------------------------------------------------- |
+| `GET`  | `/proposals`             | All. `?freelancer_id=` or `?client_id=` narrows it   |
+| `POST` | `/proposals`             | Apply to a job (one bid per freelancer per job)      |
+| `PUT`  | `/proposals/:id`         | Decline it, or withdraw it                           |
+| `POST` | `/proposals/:id/accept`  | Hire: creates the contract and settles the other bids |
 
-### Orders
+### Contracts
 
-| Method   | Endpoint                                  | Purpose                                     |
-| -------- | ----------------------------------------- | ------------------------------------------- |
-| `GET`    | `/orders`                                 | Filter by `?client_id=` or `?freelancer_id=`|
-| `GET`    | `/orders/:id`                             | One order **with** milestones, messages, activity and change requests |
-| `POST`   | `/orders`                                 | Create directly (mainly for testing)        |
-| `PUT`    | `/orders/:id`                             | Edit                                        |
-| `DELETE` | `/orders/:id`                             | Delete                                      |
-| `POST`   | `/orders/:id/change-requests`             | Freelancer asks for extra scope             |
-| `PUT`    | `/orders/:orderId/change-requests/:id`    | Client approves or declines it              |
+| Method | Endpoint                   | Purpose                                             |
+| ------ | -------------------------- | --------------------------------------------------- |
+| `GET`  | `/contracts`               | All. `?client_id=` or `?freelancer_id=` narrows it  |
+| `GET`  | `/contracts/:id`           | One contract **with** its messages                  |
+| `PUT`  | `/contracts/:id/deliver`   | Freelancer hands the work in (`{ link, note }`)     |
+| `PUT`  | `/contracts/:id/approve`   | Client accepts it — the escrow is released          |
+| `PUT`  | `/contracts/:id/revision`  | Client sends it back (`{ note }`)                   |
+| `PUT`  | `/contracts/:id/cancel`    | Client calls the contract off                       |
 
-### Milestones
+### Messages
 
-| Method   | Endpoint                    | Purpose                              |
-| -------- | --------------------------- | ------------------------------------ |
-| `GET`    | `/milestones?order_id=1`    | List for one order                   |
-| `POST`   | `/milestones`               | Add one                              |
-| `PUT`    | `/milestones/:id/start`     | Freelancer starts work               |
-| `PUT`    | `/milestones/:id/deliver`   | Freelancer submits a deliverable     |
-| `PUT`    | `/milestones/:id/approve`   | Client approves — releases the money |
-| `PUT`    | `/milestones/:id/revision`  | Client sends it back with notes      |
-| `PUT`    | `/milestones/:id`           | Edit title / amount / due date       |
-| `DELETE` | `/milestones/:id`           | Delete                               |
+| Method | Endpoint                     | Purpose                    |
+| ------ | ---------------------------- | -------------------------- |
+| `GET`  | `/messages?contract_id=1`    | The thread for a contract  |
+| `POST` | `/messages`                  | Send a message             |
 
-### Messages, disputes and money
+### Money
 
 | Method   | Endpoint                        | Purpose                                    |
 | -------- | ------------------------------- | ------------------------------------------ |
-| `GET`    | `/messages?order_id=1`          | The thread for one order                   |
-| `POST`   | `/messages`                     | Send a message                             |
-| `PUT`    | `/messages/read`                | Mark the other side's messages as read     |
-| `GET`    | `/disputes`                     | List; optional `?status=`                  |
-| `POST`   | `/disputes`                     | Raise one against a milestone              |
-| `PUT`    | `/disputes/:id`                 | Admin claims the case                      |
-| `PUT`    | `/disputes/:id/resolve`         | Resolve: `release`, `refund` or `split`    |
-| `GET`    | `/portfolio?user_id=2`          | A freelancer's projects                    |
-| `POST`   | `/portfolio`                    | Add one                                    |
-| `PUT`    | `/portfolio/:id`                | Edit                                       |
-| `DELETE` | `/portfolio/:id`                | Remove                                     |
-| `GET`    | `/withdrawals?freelancer_id=2`  | Payout history                             |
-| `POST`   | `/withdrawals`                  | Request a payout (checks the balance)      |
-| `GET`    | `/payment-methods?client_id=1`  | A client's saved methods                   |
+| `GET`    | `/payments?client_id=1`         | A client's payment history                 |
+| `POST`   | `/payments`                     | Record a payment, with the currency and exchange rate used |
+| `GET`    | `/payment-methods?client_id=1`  | Saved cards and accounts                   |
 | `POST`   | `/payment-methods`              | Add one                                    |
-| `PUT`    | `/payment-methods/:id/primary`  | Make it the primary method                 |
-| `DELETE` | `/payment-methods/:id`          | Remove                                     |
+| `DELETE` | `/payment-methods/:id`          | Remove one                                 |
+| `GET`    | `/withdrawals?freelancer_id=2`  | Payout history                             |
+| `POST`   | `/withdrawals`                  | Request a payout                           |
+
+---
+
+## Example requests
+
+```bash
+# sign in
+curl -X POST http://localhost:5000/api/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"rana@techcorp.com","password":"demo1234"}'
+
+# post a job
+curl -X POST http://localhost:5000/api/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"client_id":1,"title":"Landing page","description":"One page, responsive.","budget":600,"days":7,"level":"Entry","skills":["React.js"]}'
+
+# an admin-only route without the header -> 403
+curl -X DELETE http://localhost:5000/api/users/7
+
+# the same route with it -> 200
+curl -X DELETE http://localhost:5000/api/users/7 -H "x-user-role: admin"
+```
 
 ---
 
@@ -184,12 +215,9 @@ Base URL: `http://localhost:5000/api`
 
 `seed.sql` creates these. Every one of them uses the password `demo1234`.
 
-| Email                  | Role       |
-| ---------------------- | ---------- |
-| `rana@techcorp.com`    | client     |
-| `sadeq@workmint.dev`   | freelancer |
-| `ops@workmint.com`     | admin      |
-
-Passwords are stored as plain text in the `users` table. That keeps the sign-in code to a
-single `SELECT ... WHERE email = $1 AND password = $2`, which is the point of this
-project, but it is not how you would store a password in something real.
+| Email                  | Role       | Notes                          |
+| ---------------------- | ---------- | ------------------------------ |
+| `rana@techcorp.com`    | client     | has two live contracts         |
+| `sadeq@workmint.dev`   | freelancer | one contract awaiting review   |
+| `layla@nasser.dev`     | freelancer | one finished contract          |
+| `ops@workmint.com`     | admin      | sees every account and listing |

@@ -4,22 +4,23 @@ import dotenv from "dotenv";
 
 import db from "./db/db.js";
 import userRoutes from "./routes/users.js";
+import portfolioRoutes from "./routes/portfolio.js";
 import jobRoutes from "./routes/jobs.js";
 import proposalRoutes from "./routes/proposals.js";
-import orderRoutes from "./routes/orders.js";
-import milestoneRoutes from "./routes/milestones.js";
+import contractRoutes from "./routes/contracts.js";
 import messageRoutes from "./routes/messages.js";
-import disputeRoutes from "./routes/disputes.js";
-import portfolioRoutes from "./routes/portfolio.js";
-import withdrawalRoutes from "./routes/withdrawals.js";
+import paymentRoutes from "./routes/payments.js";
 import paymentMethodRoutes from "./routes/paymentMethods.js";
+import withdrawalRoutes from "./routes/withdrawals.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// cors lets the React app on a different port call this API.
 app.use(cors());
+// express.json reads the JSON body of POST and PUT requests into req.body.
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -27,15 +28,14 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/users", userRoutes);
+app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/proposals", proposalRoutes);
-app.use("/api/orders", orderRoutes);
-app.use("/api/milestones", milestoneRoutes);
+app.use("/api/contracts", contractRoutes);
 app.use("/api/messages", messageRoutes);
-app.use("/api/disputes", disputeRoutes);
-app.use("/api/portfolio", portfolioRoutes);
-app.use("/api/withdrawals", withdrawalRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/payment-methods", paymentMethodRoutes);
+app.use("/api/withdrawals", withdrawalRoutes);
 
 db.connect().then(() => {
   console.log("Connected to PostgreSQL");

@@ -1,35 +1,19 @@
 import express from "express";
 import db from "../db/db.js";
+import adminOnly from "../middleware/adminOnly.js";
 
 const router = express.Router();
 
 const COLUMNS = `id, name, email, role, status, company, title, bio, skills,
-                 hourly_rate, available, response_hours, languages, timezone,
-                 location, rating, portfolio_url, pitch, suspended_reason, joined_at`;
+                 hourly_rate, available, rating, location, suspended_reason, joined_at`;
 
 router.get("/", async (req, res) => {
-  const { role, status } = req.query;
-
-  if (role && status) {
-    const result = await db.query(
-      `SELECT ${COLUMNS} FROM users WHERE role = $1 AND status = $2 ORDER BY id`,
-      [role, status]
-    );
-    return res.json(result.rows);
-  }
+  const { role } = req.query;
 
   if (role) {
     const result = await db.query(
-      `SELECT ${COLUMNS} FROM users WHERE role = $1 ORDER BY id`,
+      `SELECT ${COLUMNS} FROM users WHERE role = $1 AND status = 'active' ORDER BY rating DESC`,
       [role]
-    );
-    return res.json(result.rows);
-  }
-
-  if (status) {
-    const result = await db.query(
-      `SELECT ${COLUMNS} FROM users WHERE status = $1 ORDER BY id`,
-      [status]
     );
     return res.json(result.rows);
   }
@@ -39,10 +23,7 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
-  const result = await db.query(
-    `SELECT ${COLUMNS} FROM users WHERE id = $1`,
-    [req.params.id]
-  );
+  const result = await db.query(`SELECT ${COLUMNS} FROM users WHERE id = $1`, [req.params.id]);
 
   if (result.rows.length === 0) {
     return res.status(404).json({ message: "User not found" });
@@ -106,8 +87,8 @@ router.put("/:id", async (req, res) => {
 
   const result = await db.query(
     `UPDATE users
-     SET name = $1, title = $2, bio = $3, skills = $4, hourly_rate = $5,
-         available = $6, location = $7, company = $8
+     SET name = $1, title = $2, bio = $3, skills = $4,
+         hourly_rate = $5, available = $6, location = $7, company = $8
      WHERE id = $9
      RETURNING ${COLUMNS}`,
     [name, title, bio, skills, hourly_rate, available, location, company, req.params.id]
@@ -119,7 +100,7 @@ router.put("/:id", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-router.put("/:id/status", async (req, res) => {
+router.put("/:id/status", adminOnly, async (req, res) => {
   const { status, reason } = req.body;
 
   if (!["active", "pending", "suspended"].includes(status)) {
@@ -137,7 +118,7 @@ router.put("/:id/status", async (req, res) => {
   res.json(result.rows[0]);
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", adminOnly, async (req, res) => {
   const result = await db.query(
     "DELETE FROM users WHERE id = $1 RETURNING id, name, email",
     [req.params.id]

@@ -1,115 +1,128 @@
-TRUNCATE disputes, change_requests, activity, messages,
-  milestones, orders, proposals, jobs, payment_methods,
-  withdrawals, portfolio_items, users RESTART IDENTITY CASCADE;
+-- Demo data for Workmint. Run schema.sql first.
+--   psql -U postgres -d workmint -f server/seed.sql
+--
+-- Every demo account uses the password: demo1234
+
+TRUNCATE payments, withdrawals, payment_methods, messages,
+  contracts, proposals, jobs, portfolio_items, users RESTART IDENTITY CASCADE;
 
 INSERT INTO users (name, email, password, role, status, company, title, bio,
-                   skills, hourly_rate, location, timezone, languages, rating, portfolio_url, pitch)
+                   skills, hourly_rate, rating, location)
 VALUES
-  ('Rana Haddad', 'rana@techcorp.com', 'demo1234',
-   'client', 'active', 'TechCorp', 'Head of engineering', NULL,
-   '{}', NULL, 'Amman, Jordan', 'GMT+3', NULL, 4.9, NULL, NULL),
+  -- 1: client
+  ('Rana Haddad', 'rana@techcorp.com', 'demo1234', 'client', 'active',
+   'TechCorp', 'Head of engineering', NULL, '{}', 0, 4.9, 'Amman, Jordan'),
 
-  ('Sadeq Odeh', 'sadeq@workmint.dev', 'demo1234',
-   'freelancer', 'active', NULL, 'Full-stack developer - React & .NET',
-   'Builds scalable web applications, REST APIs and the database layer underneath them.',
-   '{React.js,.NET,C++,PostgreSQL}', 45, 'Amman, Jordan', 'GMT+3',
-   'Arabic (native), English (fluent)', 4.9, NULL, NULL),
+  -- 2: freelancer
+  ('Sadeq Odeh', 'sadeq@workmint.dev', 'demo1234', 'freelancer', 'active',
+   NULL, 'Full-stack developer',
+   'Builds web applications, REST APIs and the database layer underneath them.',
+   '{React.js,Node.js,PostgreSQL,C++}', 45, 4.9, 'Amman, Jordan'),
 
-  ('Workmint Ops', 'ops@workmint.com', 'demo1234',
-   'admin', 'active', NULL, 'Platform operations', NULL, '{}', NULL, NULL, NULL, NULL, 5.0, NULL, NULL),
+  -- 3: admin
+  ('Workmint Ops', 'ops@workmint.com', 'demo1234', 'admin', 'active',
+   NULL, 'Platform operations', NULL, '{}', 0, 5.0, 'Amman, Jordan'),
 
-  ('Layla Nasser', 'layla@nasser.dev', 'demo1234',
-   'freelancer', 'active', NULL, 'Data visualisation engineer',
+  -- 4: freelancer
+  ('Layla Nasser', 'layla@nasser.dev', 'demo1234', 'freelancer', 'active',
+   NULL, 'Data visualisation engineer',
    'Analytics pipelines and the dashboards on top of them.',
-   '{Go,Kafka,PostgreSQL,Grafana}', 52, 'Beirut, Lebanon', 'GMT+3', 'Arabic, English', 4.8, NULL, NULL),
+   '{Go,PostgreSQL,Grafana}', 52, 4.8, 'Beirut, Lebanon'),
 
-  ('Karim Aziz', 'karim@aziz.io', 'demo1234',
-   'freelancer', 'active', NULL, 'DevOps and platform engineer',
-   'Pipeline migrations and on-call setup. Leaves runbooks behind.',
-   '{Kubernetes,Terraform,Go}', 48, 'Cairo, Egypt', 'GMT+2', 'Arabic, English', 4.7, NULL, NULL),
+  -- 5: freelancer
+  ('Karim Aziz', 'karim@aziz.io', 'demo1234', 'freelancer', 'active',
+   NULL, 'DevOps engineer',
+   'Pipeline migrations and deployment setup. Leaves documentation behind.',
+   '{Docker,Terraform,Go}', 48, 4.7, 'Cairo, Egypt'),
 
-  ('Yousef Amer', 'yousef.amer@mail.com', 'demo1234',
-   'freelancer', 'pending', NULL, 'Android developer', NULL,
-   '{Kotlin,"Jetpack Compose",Firebase}', 40, 'Amman, Jordan', 'GMT+3', NULL, 5.0,
-   'https://github.com/demo/yousef',
-   'Six years of Android work, mostly logistics and field-service apps.'),
+  -- 6: freelancer waiting for admin approval
+  ('Yousef Amer', 'yousef.amer@mail.com', 'demo1234', 'freelancer', 'pending',
+   NULL, 'Android developer', 'Six years of Android work, mostly logistics apps.',
+   '{Kotlin,Firebase}', 40, 5.0, 'Amman, Jordan'),
 
-  ('Tom Vale', 'tom@valeworks.com', 'demo1234',
-   'client', 'suspended', 'Valeworks', 'Founder', NULL, '{}', NULL, NULL, NULL, NULL, 3.2, NULL, NULL);
+  -- 7: suspended client
+  ('Tom Vale', 'tom@valeworks.com', 'demo1234', 'client', 'suspended',
+   'Valeworks', 'Founder', NULL, '{}', 0, 3.2, 'London, UK');
 
-UPDATE users SET suspended_reason = 'Three chargebacks after milestone approval.'
+UPDATE users
+SET suspended_reason = 'Three chargebacks after the work was approved.'
 WHERE email = 'tom@valeworks.com';
 
 INSERT INTO portfolio_items (user_id, title, tech, link, description) VALUES
   (2, 'Employee task tracking system', '{React,Node.js,PostgreSQL}',
    'https://github.com/demo/task-tracker',
-   'Role-based access control, audit trail and analytics for a 200-person team.'),
-  (2, 'Zyro browser engine shell', '{C++,CEF3,GTK3}',
+   'Role-based access control and reporting for a 200-person team.'),
+  (2, 'Zyro browser shell', '{C++,GTK3}',
    'https://github.com/demo/zyro',
-   'Multi-process browser shell with a V8 IPC bridge and request interception.');
+   'A multi-process browser shell with request interception.');
 
-INSERT INTO payment_methods (client_id, label, kind, is_primary) VALUES
-  (1, 'Visa ending 4417', 'Card', TRUE),
-  (1, 'Arab Bank transfer', 'Bank', FALSE);
+INSERT INTO payment_methods (client_id, label, kind) VALUES
+  (1, 'Visa ending 4417', 'Card'),
+  (1, 'Arab Bank transfer', 'Bank');
 
 INSERT INTO jobs (client_id, title, description, budget, days, level, skills, status) VALUES
   (1, 'Realtime metrics service',
-   'Stream ingestion events into a rollup service that powers per-second dashboards. Existing Kafka topics, we need the consumer and the storage layer.',
-   4500, 30, 'Expert', '{Go,Kafka,PostgreSQL}', 'open'),
+   'Stream our ingestion events into a service that powers the per-second dashboards. The message queue already exists, we need the consumer and the storage layer.',
+   4500, 30, 'Expert', '{Go,PostgreSQL}', 'open'),
+
   (1, 'Internal admin panel rebuild',
-   'Replace an ageing internal tool with a React panel. Designs are done, nine screens, the API already exists.',
-   2000, 18, 'Intermediate', '{React.js,Bootstrap,"REST API"}', 'open');
+   'Replace an ageing internal tool with a React panel. The designs are done, nine screens, and the API already exists.',
+   2000, 18, 'Intermediate', '{React.js,Bootstrap}', 'open'),
+
+  (1, 'C++ systems architecture review',
+   'Refactor the ingestion pipeline into modular services and document the threading model.',
+   3400, 32, 'Expert', '{C++,PostgreSQL}', 'filled'),
+
+  (1, 'Customer analytics dashboard',
+   'Usage analytics for the admin console: retention, funnel drop-off and CSV export.',
+   3000, 22, 'Intermediate', '{Go,Grafana}', 'filled');
 
 INSERT INTO proposals (job_id, freelancer_id, amount, days, cover, status) VALUES
   (1, 4, 4200, 28,
-   'I built the rollup layer for a metrics product doing 40k events/sec on Kafka. The trap here is late-arriving events breaking your per-second buckets, so I would settle the windowing strategy with you before writing the consumer.',
+   'I built the same rollup layer for a metrics product last year. The trap here is late-arriving events breaking the per-second buckets, so I would agree the windowing strategy with you before writing any consumer code.',
    'Pending'),
+
   (1, 5, 3600, 35,
-   'Cheapest path here is not a new service. I would run the consumer as a sidecar on your existing cluster and reuse the Postgres you already pay for.',
-   'Pending');
+   'The cheapest path is not a new service. I would run the consumer next to your existing cluster and reuse the PostgreSQL instance you already pay for.',
+   'Pending'),
 
-INSERT INTO orders (client_id, freelancer_id, project, brief, started_on, deadline, revisions_included) VALUES
-  (1, 2, 'C++ Systems Architecture',
+  (2, 2, 1900, 16,
+   'Nine screens on an API that already exists is a clean job. I would build the shared table and form components first so the last six screens go quickly.',
+   'Pending'),
+
+  (3, 2, 3400, 32, 'I have done this refactor twice before. Handover notes included.', 'Accepted'),
+
+  (4, 4, 3000, 22, 'Retention and funnel charts are my day job. Export included.', 'Accepted');
+
+INSERT INTO contracts (job_id, client_id, freelancer_id, title, brief, amount, deadline,
+                       status, delivery_link, delivery_note, created_at, delivered_at, approved_at) VALUES
+  -- Delivered and waiting for the client to review
+  (3, 1, 2, 'C++ systems architecture review',
    'Refactor the ingestion pipeline into modular services and document the threading model.',
-   CURRENT_DATE - 21, CURRENT_DATE + 11, 3),
-  (1, 4, 'Customer Analytics Dashboard',
-   'Usage analytics for the admin console: cohort retention, funnel drop-off, CSV export.',
-   CURRENT_DATE - 16, CURRENT_DATE + 6, 2);
+   3400, CURRENT_DATE + 11, 'delivered',
+   'https://github.com/demo/ingest-core/pull/14',
+   'Worker pool and retry queue are done. Diagrams are in /docs.',
+   NOW() - INTERVAL '21 days', NOW() - INTERVAL '30 hours', NULL),
 
-INSERT INTO milestones (order_id, position, title, amount, due_date, status, revisions_used,
-                        revision_note, deliverable_link, deliverable_note, delivered_at, approved_on) VALUES
-  (1, 1, 'Architecture & schema', 800, CURRENT_DATE - 9, 'approved', 0, NULL,
-   'https://github.com/demo/ingest-arch', 'Diagrams and schema DDL in /docs.',
-   NOW() - INTERVAL '9 days', NOW() - INTERVAL '8 days'),
-  (1, 2, 'Core service refactor', 1200, CURRENT_DATE + 2, 'revision', 1,
-   'Worker pool looks good, but the retry logic needs exponential backoff and the config should be env-driven.',
-   'https://github.com/demo/ingest-core/pull/14', 'Worker pool + retry queue.',
-   NOW() - INTERVAL '30 hours', NULL),
-  (1, 3, 'Load testing & handover', 1400, CURRENT_DATE + 11, 'pending', 0, NULL, NULL, NULL, NULL, NULL),
+  -- Finished and paid
+  (4, 1, 4, 'Customer analytics dashboard',
+   'Usage analytics for the admin console: retention, funnel drop-off and CSV export.',
+   3000, CURRENT_DATE - 2, 'approved',
+   'https://staging.techcorp.dev/analytics',
+   'All four charts are live and the CSV export works.',
+   NOW() - INTERVAL '30 days', NOW() - INTERVAL '6 days', NOW() - INTERVAL '5 days');
 
-  (2, 1, 'Data model & queries', 900, CURRENT_DATE - 6, 'approved', 0, NULL, NULL, NULL, NULL,
-   NOW() - INTERVAL '5 days'),
-  (2, 2, 'Dashboard screens', 1100, CURRENT_DATE - 1, 'submitted', 0, NULL,
-   'https://staging.techcorp.dev/analytics', 'All four charts live. Export is stubbed until the next milestone.',
-   NOW() - INTERVAL '14 hours', NULL),
-  (2, 3, 'CSV export & polish', 1000, CURRENT_DATE + 6, 'pending', 0, NULL, NULL, NULL, NULL, NULL);
+INSERT INTO messages (contract_id, sender_role, body, sent_at) VALUES
+  (1, 'client', 'Left comments on the pull request, mainly around the retry path.', NOW() - INTERVAL '26 hours'),
+  (1, 'freelancer', 'Got it. Moving the backoff into its own class and pulling the config out to env vars.', NOW() - INTERVAL '25 hours'),
+  (1, 'client', 'Perfect. Can we talk about a metrics endpoint before handover?', NOW() - INTERVAL '3 hours'),
+  (2, 'freelancer', 'Dashboard is on staging. The retention chart needed a different query shape.', NOW() - INTERVAL '6 days'),
+  (2, 'client', 'Looks great, approving it now. Thanks Layla.', NOW() - INTERVAL '5 days');
 
-INSERT INTO messages (order_id, sender_role, body, read, sent_at) VALUES
-  (1, 'client', 'Left comments on PR #14 - mainly around the retry path.', TRUE, NOW() - INTERVAL '26 hours'),
-  (1, 'freelancer', 'Got it. Moving the backoff into a policy class and pulling the config out to env vars.', TRUE, NOW() - INTERVAL '25 hours'),
-  (1, 'client', 'Perfect. Can we talk about adding a metrics endpoint before handover?', FALSE, NOW() - INTERVAL '3 hours'),
-  (2, 'freelancer', 'Dashboard screens are on staging. The cohort chart needed a different query shape.', FALSE, NOW() - INTERVAL '14 hours');
-
-INSERT INTO activity (order_id, actor, text, at) VALUES
-  (1, 'client', 'TechCorp requested a revision on "Core service refactor"', NOW() - INTERVAL '26 hours'),
-  (1, 'freelancer', 'Sadeq Odeh delivered "Core service refactor"', NOW() - INTERVAL '30 hours'),
-  (1, 'client', 'TechCorp approved "Architecture & schema" - $800 released', NOW() - INTERVAL '8 days'),
-  (2, 'freelancer', 'Layla Nasser delivered "Dashboard screens"', NOW() - INTERVAL '14 hours'),
-  (2, 'client', 'TechCorp approved "Data model & queries" - $900 released', NOW() - INTERVAL '5 days');
-
-INSERT INTO change_requests (order_id, reason, extra_cost, extra_days, status, created_at) VALUES
-  (2, 'You asked for funnel drop-off by acquisition channel, which needs a second query layer and a new chart type.',
-   450, 4, 'Pending', NOW() - INTERVAL '12 hours');
+INSERT INTO payments (client_id, method_id, note, amount_usd, currency, rate, amount_converted, paid_at) VALUES
+  (1, 1, 'Escrow funding for the analytics dashboard', 3090.00, 'JOD', 0.709000, 2190.81, NOW() - INTERVAL '30 days'),
+  (1, 1, 'Escrow funding for the C++ architecture review', 3502.00, 'JOD', 0.709000, 2482.92, NOW() - INTERVAL '21 days');
 
 INSERT INTO withdrawals (freelancer_id, amount, method, status, at) VALUES
-  (2, 720, 'Bank transfer', 'Paid', NOW() - INTERVAL '20 days');
+  (4, 2700, 'Bank transfer', 'Paid', NOW() - INTERVAL '4 days'),
+  (2, 720, 'PayPal', 'Processing', NOW() - INTERVAL '2 days');

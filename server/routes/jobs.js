@@ -1,28 +1,26 @@
 import express from "express";
 import db from "../db/db.js";
+import adminOnly from "../middleware/adminOnly.js";
 
 const router = express.Router();
 
 const JOB_SELECT = `SELECT j.*, u.company AS client, u.rating AS client_rating,
-                      (SELECT COUNT(*) FROM proposals p WHERE p.job_id = j.id) AS proposal_count
+                      (SELECT COUNT(*) FROM proposals WHERE job_id = j.id) AS proposal_count
                     FROM jobs j
                     JOIN users u ON u.id = j.client_id`;
 
 router.get("/", async (req, res) => {
-  const { client_id, status } = req.query;
+  const { client_id } = req.query;
 
   if (client_id) {
     const result = await db.query(
-      `${JOB_SELECT} WHERE j.status = $1 AND j.client_id = $2 ORDER BY j.created_at DESC`,
-      [status || "open", client_id]
+      `${JOB_SELECT} WHERE j.client_id = $1 AND j.status = 'open' ORDER BY j.created_at DESC`,
+      [client_id]
     );
     return res.json(result.rows);
   }
 
-  const result = await db.query(
-    `${JOB_SELECT} WHERE j.status = $1 ORDER BY j.created_at DESC`,
-    [status || "open"]
-  );
+  const result = await db.query(`${JOB_SELECT} WHERE j.status = 'open' ORDER BY j.created_at DESC`);
   res.json(result.rows);
 });
 
@@ -51,23 +49,7 @@ router.post("/", async (req, res) => {
   res.status(201).json(result.rows[0]);
 });
 
-router.put("/:id", async (req, res) => {
-  const { title, description, budget, days, level, skills, status } = req.body;
-
-  const result = await db.query(
-    `UPDATE jobs SET title = $1, description = $2, budget = $3, days = $4,
-                     level = $5, skills = $6, status = $7
-     WHERE id = $8 RETURNING *`,
-    [title, description, budget, days, level, skills, status || "open", req.params.id]
-  );
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ message: "Job not found" });
-  }
-  res.json(result.rows[0]);
-});
-
-router.delete("/:id", async (req, res) => {
+router.put("/:id/close", async (req, res) => {
   const result = await db.query(
     "UPDATE jobs SET status = 'closed' WHERE id = $1 RETURNING *",
     [req.params.id]
@@ -83,6 +65,15 @@ router.delete("/:id", async (req, res) => {
   );
 
   res.json({ message: "Job closed", job: result.rows[0] });
+});
+
+router.delete("/:id", adminOnly, async (req, res) => {
+  const result = await db.query("DELETE FROM jobs WHERE id = $1 RETURNING *", [req.params.id]);
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ message: "Job not found" });
+  }
+  res.json({ message: "Job deleted", job: result.rows[0] });
 });
 
 export default router;

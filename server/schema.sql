@@ -1,7 +1,12 @@
-DROP TABLE IF EXISTS disputes, change_requests, activity, messages,
-  milestones, orders, proposals, jobs, payment_methods,
-  withdrawals, portfolio_items, users CASCADE;
+-- Workmint database schema (PostgreSQL)
+-- Run this file once to create the tables, then run seed.sql to fill them.
+--   psql -U postgres -d workmint -f server/schema.sql
+--   psql -U postgres -d workmint -f server/seed.sql
 
+DROP TABLE IF EXISTS payments, withdrawals, payment_methods, messages,
+  contracts, proposals, jobs, portfolio_items, users CASCADE;
+
+-- Every account on the platform: clients, freelancers and admins.
 CREATE TABLE users (
   id               SERIAL PRIMARY KEY,
   name             TEXT NOT NULL,
@@ -14,20 +19,15 @@ CREATE TABLE users (
   title            TEXT,
   bio              TEXT,
   skills           TEXT[] NOT NULL DEFAULT '{}',
-  hourly_rate      NUMERIC(8,2),
+  hourly_rate      NUMERIC(8,2) DEFAULT 0,
   available        BOOLEAN NOT NULL DEFAULT TRUE,
-  response_hours   INTEGER DEFAULT 4,
-  languages        TEXT,
-  portfolio_url    TEXT,
-  pitch            TEXT,
   rating           NUMERIC(2,1) DEFAULT 5.0,
   location         TEXT,
-  timezone         TEXT,
   suspended_reason TEXT,
-  joined_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_active      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  joined_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Past work a freelancer shows on their profile.
 CREATE TABLE portfolio_items (
   id          SERIAL PRIMARY KEY,
   user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -38,12 +38,13 @@ CREATE TABLE portfolio_items (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- A job a client posts to the marketplace.
 CREATE TABLE jobs (
   id          SERIAL PRIMARY KEY,
   client_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title       TEXT NOT NULL,
   description TEXT NOT NULL,
-  budget      NUMERIC(12,2) NOT NULL,
+  budget      NUMERIC(10,2) NOT NULL,
   days        INTEGER NOT NULL,
   level       TEXT NOT NULL DEFAULT 'Intermediate'
                    CHECK (level IN ('Entry', 'Intermediate', 'Expert')),
@@ -53,109 +54,78 @@ CREATE TABLE jobs (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- A freelancer's bid on a job.
 CREATE TABLE proposals (
   id            SERIAL PRIMARY KEY,
   job_id        INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
   freelancer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  amount        NUMERIC(12,2) NOT NULL,
+  amount        NUMERIC(10,2) NOT NULL,
   days          INTEGER NOT NULL,
   cover         TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'Pending'
-                     CHECK (status IN ('Pending', 'Interviewing', 'Accepted', 'Declined', 'Withdrawn')),
+                     CHECK (status IN ('Pending', 'Accepted', 'Declined', 'Withdrawn')),
   sent_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE orders (
-  id                 SERIAL PRIMARY KEY,
-  job_id             INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
-  client_id          INTEGER NOT NULL REFERENCES users(id),
-  freelancer_id      INTEGER NOT NULL REFERENCES users(id),
-  project            TEXT NOT NULL,
-  brief              TEXT,
-  started_on         DATE NOT NULL DEFAULT CURRENT_DATE,
-  deadline           DATE NOT NULL,
-  revisions_included INTEGER NOT NULL DEFAULT 2,
-  cancelled          BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Created when a client accepts a proposal. One contract has one price and
+-- one status, and moves in_progress -> delivered -> approved.
+CREATE TABLE contracts (
+  id            SERIAL PRIMARY KEY,
+  job_id        INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
+  client_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  freelancer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title         TEXT NOT NULL,
+  brief         TEXT,
+  amount        NUMERIC(10,2) NOT NULL,
+  deadline      DATE NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'in_progress'
+                     CHECK (status IN ('in_progress', 'delivered', 'revision', 'approved', 'cancelled')),
+  delivery_link TEXT,
+  delivery_note TEXT,
+  revision_note TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  delivered_at  TIMESTAMPTZ,
+  approved_at   TIMESTAMPTZ
 );
 
-CREATE TABLE milestones (
-  id               SERIAL PRIMARY KEY,
-  order_id         INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  position         INTEGER NOT NULL,
-  title            TEXT NOT NULL,
-  amount           NUMERIC(12,2) NOT NULL,
-  due_date         DATE NOT NULL,
-  status           TEXT NOT NULL DEFAULT 'pending'
-                        CHECK (status IN ('pending','active','submitted','revision','approved','disputed','refunded')),
-  revisions_used   INTEGER NOT NULL DEFAULT 0,
-  revision_note    TEXT,
-  deliverable_link TEXT,
-  deliverable_note TEXT,
-  delivered_at     TIMESTAMPTZ,
-  approved_on      TIMESTAMPTZ,
-  refunded_on      TIMESTAMPTZ
-);
-
+-- One chat thread per contract.
 CREATE TABLE messages (
   id          SERIAL PRIMARY KEY,
-  order_id    INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
   sender_role TEXT NOT NULL CHECK (sender_role IN ('client', 'freelancer')),
   body        TEXT NOT NULL,
-  read        BOOLEAN NOT NULL DEFAULT FALSE,
   sent_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE activity (
-  id       SERIAL PRIMARY KEY,
-  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  actor    TEXT NOT NULL CHECK (actor IN ('client', 'freelancer', 'system')),
-  text     TEXT NOT NULL,
-  at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- A card or account the client pays from.
+CREATE TABLE payment_methods (
+  id        SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label     TEXT NOT NULL,
+  kind      TEXT NOT NULL CHECK (kind IN ('Card', 'Bank', 'PayPal'))
 );
 
-CREATE TABLE change_requests (
-  id         SERIAL PRIMARY KEY,
-  order_id   INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  reason     TEXT NOT NULL,
-  extra_cost NUMERIC(12,2) NOT NULL DEFAULT 0,
-  extra_days INTEGER NOT NULL DEFAULT 0,
-  status     TEXT NOT NULL DEFAULT 'Pending'
-                  CHECK (status IN ('Pending', 'Approved', 'Declined')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  decided_at TIMESTAMPTZ
+-- A payment the client made. The exchange rate used at the time is stored
+-- with the row so the receipt never changes when rates move.
+CREATE TABLE payments (
+  id               SERIAL PRIMARY KEY,
+  client_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  method_id        INTEGER REFERENCES payment_methods(id) ON DELETE SET NULL,
+  note             TEXT NOT NULL,
+  amount_usd       NUMERIC(10,2) NOT NULL,
+  currency         TEXT NOT NULL,
+  rate             NUMERIC(12,6) NOT NULL,
+  amount_converted NUMERIC(12,2) NOT NULL,
+  paid_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE disputes (
-  id              SERIAL PRIMARY KEY,
-  order_id        INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  milestone_id    INTEGER NOT NULL REFERENCES milestones(id) ON DELETE CASCADE,
-  raised_by       TEXT NOT NULL CHECK (raised_by IN ('client', 'freelancer')),
-  amount          NUMERIC(12,2) NOT NULL,
-  reason          TEXT NOT NULL,
-  detail          TEXT NOT NULL,
-  status          TEXT NOT NULL DEFAULT 'Open'
-                       CHECK (status IN ('Open', 'Under review', 'Resolved')),
-  resolution      TEXT CHECK (resolution IN ('release', 'refund', 'split')),
-  resolution_note TEXT,
-  opened_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  resolved_at     TIMESTAMPTZ
-);
-
+-- A freelancer moving cleared earnings out of the platform.
 CREATE TABLE withdrawals (
   id            SERIAL PRIMARY KEY,
   freelancer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  amount        NUMERIC(12,2) NOT NULL,
+  amount        NUMERIC(10,2) NOT NULL,
   method        TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'Processing'
                      CHECK (status IN ('Processing', 'Paid', 'Failed')),
   at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE payment_methods (
-  id         SERIAL PRIMARY KEY,
-  client_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  label      TEXT NOT NULL,
-  kind       TEXT NOT NULL CHECK (kind IN ('Card', 'Bank', 'PayPal')),
-  is_primary BOOLEAN NOT NULL DEFAULT FALSE
 );
