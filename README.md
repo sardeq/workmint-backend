@@ -15,8 +15,6 @@ The React front end lives in a separate repository and talks to this API over HT
 | Runtime     | Node.js    |
 | Framework   | Express    |
 | Database    | PostgreSQL |
-| Config      | `dotenv`   |
-| CORS        | `cors`     |
 
 ---
 
@@ -88,28 +86,6 @@ server/
 
 Each router owns one table. `index.js` mounts them under a URL prefix, so
 `router.get("/")` inside `jobs.js` is served at `/api/jobs`.
-
----
-
-## Data model
-
-Nine tables. The important relationship is the chain a piece of work travels down:
-
-```
-users ──posts──> jobs ──receives──> proposals ──accepted──> contracts ──has──> messages
-  │                                                              │
-  ├── portfolio_items                                            │
-  ├── payment_methods ──used by──> payments                      │
-  └── withdrawals <───────────── money released when approved ───┘
-```
-
-A **contract** has one price and one status. It moves:
-
-```
-in_progress ──deliver──> delivered ──approve──> approved
-                             │
-                             └──revision──> revision ──deliver──> delivered
-```
 
 ---
 
@@ -186,28 +162,6 @@ Base URL: `http://localhost:5000/api`
 | `DELETE` | `/payment-methods/:id`          | Remove one                                 |
 | `GET`    | `/withdrawals?freelancer_id=2`  | Payout history                             |
 | `POST`   | `/withdrawals`                  | Request a payout                           |
-
----
-
-## Example requests
-
-```bash
-# sign in
-curl -X POST http://localhost:5000/api/users/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"rana@techcorp.com","password":"demo1234"}'
-
-# post a job
-curl -X POST http://localhost:5000/api/jobs \
-  -H "Content-Type: application/json" \
-  -d '{"client_id":1,"title":"Landing page","description":"One page, responsive.","budget":600,"days":7,"level":"Entry","skills":["React.js"]}'
-
-# an admin-only route without the header -> 403
-curl -X DELETE http://localhost:5000/api/users/7
-
-# the same route with it -> 200
-curl -X DELETE http://localhost:5000/api/users/7 -H "x-user-role: admin"
-```
 
 ---
 
